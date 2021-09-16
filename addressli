@@ -1,0 +1,1205 @@
+#!/bin/bash
+
+# to-do:
+# Ländercodes in lesbarer Form ausgeben.
+# -m - Zeilenumbruch in Notizen
+# Formatüberprüfungen der einzelnen Elemente aus vcf-Datensatz (geo-URI ist schon eingebunden).
+# Einzelne MessengerIDs löschen bzw. ändern.
+# mehrere Sprachen
+
+# Wenn neue vcf-Elemente aufgenommen werden sollen, hier die wichtigen Abschnitte:
+# 1. Funktion vcfvorlage
+# 2. Funktion datenabfrage
+# 3. Option -m Variable allmodtype (und Variable arraylist)
+# 4. Option -n löschen aus vcf-Gerüst bei leerer Variable
+# 5. Eintrag in printf-Bereich (Ausgabe auf Bildschirm)
+# 6. if-Verzweigung ("$modifytype") hinzufügen inkl. Quoting von /
+
+# Mit readlink kann man den tatsächlichen Speicherort des Skriptes ermitteln.
+pathofaddress="$(dirname $(readlink -f ${0}))"
+
+if [ -z "$(type -p ccrypt)" ]; then
+ echo -e "Das Programm ccrypt zur Entschlüsselung der Adressdaten muss installiert sein.\nBitte sudo apt-get install ccrypt ausführen und dieses Skript neu starten."
+ exit 1
+fi
+
+if [ ! -e "${pathofaddress}/address.lst.cpt" ]; then
+ if [ -e "${pathofaddress}/address.lst" ]; then
+  echo "Datei liegt unverschlüsselt im Verzeichnis. Diese wird jetzt verschlüsselt."
+  ccencrypt "${pathofaddress}/address.lst"
+  while [ ! "$?" == "0" ]; do
+   echo "Bitte Passwort erneut eingeben:"
+   ccencrypt "${pathofaddress}/address.lst"
+  done
+ else
+  echo "${pathofaddress}/address.lst existiert nicht. Skript wird abgebrochen."
+  exit 1
+ fi
+fi
+if [ -z "$(type -p qrencode)" ]; then
+ echo "Das Programm qrencode muss installiert sein. Skript wird abgebrochen."
+ exit 1
+fi
+
+usage() {
+cat <<EOU
+
+SYNOPSIS Beispiele:
+
+	$0 [nachname] [evtl. vorname]
+	$0 \*
+	$0 [options]
+	$0 [options] [argument]
+	$0 -e [argument] [nachname] [evtl. vorname]
+
+$(basename $0) ist eine kleine Adressverwaltung für die Konsole.
+Es stehen folgende Optionen zur Verfügung:
+ 
+Options:
+
+   -e [argument] [name]
+
+	Exportiert das Ergebnis der Suche mit den angegebenen Namen. Benötigt ein weiteres
+	Argument in Form eines Formats. Folgende Formate können zur Zeit angegeben werden:
+
+	vcf     - Standardformat für Adressdaten.
+	          Die Ausgabe kann als klassische .vcf-Datei oder als QR-Code gewählt werden.
+	messid  - Ausgabe einer MessengerID als QR-Code auf der Standardausgabe oder als Datei.
+
+   -h
+
+	ruft diese Hilfe auf.
+
+   -l [argument]
+   -l miss [name]
+
+	listet verschiedene Dinge auf. Beonötigt ein weiteres Argument.
+	file  - listet die Adressdatei auf.
+	label - listet die Label der eingebundenen Felder einer Adressdatei auf (Anschrift, PLZ, usw.). 
+	miss  - listet die Felder EINES Datensatzes auf, die noch nicht mit Inhalt belegt sind.
+	        (Notizen und Kontaktdaten sonstige (MessengerIDs) ausgenommen.)
+	        Benötigt mindestens den Nachnamen.
+	        Angabe des Vornamens ist optional, wenn nur ein Datensatz existiert.
+
+   -m [argument]
+
+	ändert einzelne Elemente aus einem vcf-Datensatz. Benötigt eins der folgenden Argumente:
+	mod   - Fügt eine neue Zeile zu einem bestehenden Datensatz hinzu oder ändert eine bestehende Zeile.
+	del   - Löscht eine bestimmte Zeile aus einem bestehenden Datensatz.
+	Zeitstempel wird aktualisiert.
+
+   -n [argument]
+   
+	nimmt einen neuen Datensatz in die Adressdatei auf.
+	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
+	briar - Nimmt einen neuen Briar-Datensatz auf.
+	tox   - Nimmt einen neuen Tox-Datensatz auf.
+	vcf   - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
+	        Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
+
+   -w
+
+	mit dieser Option kann man die Datei address.lst im Editor nano manuell bearbeiten.
+
+Hinweis:
+Mit folgender Zeile kann man address.lst "manuell" verschlüsseln:
+ccencrypt "${pathofaddress}/address.lst"
+Mit folgender Zeile kann man address.lst "manuell" entschlüsseln:
+ccdecrypt "${pathofaddress}/address.lst.cpt"
+
+EOU
+}
+
+# *** VCF-Vorlage ***
+# Hinweise zur Vorlage:
+# BDAY Format yyyymmdd
+# GEO dezimal dd.dddddd
+# URL http://www.example.com
+# EMAIL Weitere e-mails können mit PREF=2, PREF=3 usw. und entsp. TYPE-Bez. später hinzugefügt werden.
+# Tel +??-????-??????
+# NOTE (Notizen mit Zeilenumbrüchen) Halli\nHallo\nHallöle
+# REV (Zeitstempel) 20210404T000000Z
+# LANG (Sprache der Person) Beispiel: de-DE
+vcfvorlage() {
+cat <<EOV
+BEGIN:VCARD
+VERSION:4.0
+N:${fill_nachname};${fill_vorname};;;
+FN:${fill_vorname} ${fill_nachname}
+BDAY:${fill_birthday}
+TEL;TYPE=home,voice;VALUE=uri:tel:${fill_tel_home}
+TEL;TYPE=home,cell;VALUE=uri:tel:${fill_mob_home}
+ADR;TYPE=home;LABEL="${fill_strasse_home}\n${fill_plz_home} ${fill_ort_home}\n${fill_land_home}":;;${fill_strasse_home};${fill_ort_home};;${fill_plz_home};${fill_land_home}
+GEO;TYPE=home:geo:${fill_lat_home},${fill_lon_home}
+URL;TYPE=home:${fill_url_home}
+EMAIL;PREF=1;TYPE=home:${fill_email_home1}
+EMAIL;TYPE=home:${fill_email_home2}
+ORG:${fill_firma};${fill_abteilung};${fill_beruf}
+TEL;TYPE=work,voice;VALUE=uri:tel:${fill_tel_work}
+TEL;TYPE=work,cell;VALUE=uri:tel:${fill_mob_work}
+ADR;TYPE=work;LABEL="${fill_strasse_work}\n${fill_plz_work} ${fill_ort_work}\n${fill_land_work}":;;${fill_strasse_work};${fill_ort_work};;${fill_plz_work};${fill_land_work}
+GEO;TYPE=work:geo:${fill_lat_work},${fill_lon_work}
+URL;TYPE=work:${fill_url_work}
+EMAIL;PREF=1;TYPE=work:${fill_email_work1}
+EMAIL;TYPE=work:${fill_email_work2}
+NOTE:${fill_note}
+REV:$(date +%Y%m%dT%H%M%SZ)
+LANG:${fill_lang}
+END:VCARD
+EOV
+}
+
+datenabfrage() {
+# Nach- bzw. Vorname ist zwingend, damit Datensatz identifiziert werden kann.
+if [ "$newdata" == "yes" ]; then
+ read -p "Nachname: " fill_nachname
+ while [ -z "$fill_nachname" ]; do
+  read -p "Ungültiger Nachname! Bitte Nachnamen erneut eingeben: " fill_nachname
+ done
+ read -p "Vorname: " fill_vorname
+ while [ -z "$fill_vorname" ]; do
+  read -p "Ungültiger Vorame! Bitte Vornamen erneut eingeben: " fill_vorname
+ done
+ namesearchcontent="$(ccat ${pathofaddress}/address.lst.cpt)"
+ namesearchresult="$(echo "$namesearchcontent" | grep -i "^N:${fill_nachname};${fill_vorname}")"
+ if [ -n "$namesearchresult" ]; then
+  echo "Datensatz existiert bereits. Vorgang wird abgebrochen."
+  exit 1
+ fi
+fi
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "geburtstag" ]) && read -p "Geburtstag (yyyymmdd): " fill_birthday
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "tel_fest_priv" ]) && read -p "Telefon Festnetz (privat): " fill_tel_home
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "tel_mob_priv" ]) && read -p "Telefon mobil (privat): " fill_mob_home
+if ([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "str_nr_priv" ]); then
+ read -p "Straße und Hausnummer (privat): " fill_strasse_home
+ read -p "Postleitzahl (privat): " fill_plz_home
+ read -p "Wohnort (privat): " fill_ort_home
+ read -p "Staat des privaten Wohnsitzes: " fill_land_home
+fi
+# Geo-URI (home) inkl. Formatüberprüfung
+if ([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "geo_wohns_priv" ]); then
+ read -p "Georafische Breite (lat) des priv. Wohnsitzes (dezimale Schreibweise; dd.dddddd): " fill_lat_home
+ gradlathome="$(echo "$fill_lat_home" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ while [ -z "$(echo "$fill_lat_home" | egrep '^-*[[:digit:]]{1,2}\.[[:digit:]]*$')" -o "$gradlathome" -gt "90" ]; do
+  echo "Ungültiges Format für Georafische Breite (lat)"
+  read -p "Bitte erneut eingeben (dezimale Schreibweise; dd.dddddd): " fill_lat_home
+  gradlathome="$(echo "$fill_lat_home" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ done
+ read -p "Georafische Länge (lon) des priv. Wohnsitzes (dezimale Schreibweise; ddd.dddddd): " fill_lon_home
+  gradlonhome="$(echo "$fill_lon_home" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ while [ -z "$(echo "$fill_lon_home" | egrep '^-*[[:digit:]]{1,3}\.[[:digit:]]*$')" -o "$gradlonhome" -gt "180" ]; do
+  echo "Ungültiges Format für Georafische Länge (lon)"
+  read -p "Bitte erneut eingeben (dezimale Schreibweise; ddd.dddddd): " fill_lon_home
+  gradlonhome="$(echo "$fill_lon_home" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ done
+fi
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "url_priv" ]) && read -p "URL (privat; Bsp.:http://www.example.com): " fill_url_home
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "email1_priv" ]) && read -p "Primäre E-mail (privat): " fill_email_home1
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "email2_priv" ]) && read -p "Weitere E-mail (privat): " fill_email_home2
+if ([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "firma" ]); then
+ read -p "Firma: " fill_firma
+ read -p "Firmenabteilung: " fill_abteilung
+ read -p "Berufsbezeichnung: " fill_beruf
+fi
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "tel_fest_beruf" ]) && read -p "Telefon Festnetz (berufl.): " fill_tel_work
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "tel_mobil_beruf" ]) && read -p "Telefon mobil (berufl.): " fill_mob_work
+if ([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "str_nr_beruf" ]); then
+ read -p "Straße und Hausnummer (berufl.): " fill_strasse_work
+ read -p "Postleitzahl (berufl.): " fill_plz_work
+ read -p "Wohnort (berufl.): " fill_ort_work
+ read -p "Staat des beruflichen Wohnsitzes: " fill_land_work
+fi
+# Geo-URI (work) inkl. Formatüberprüfung
+if ([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "geo_wohns_beruf" ]); then
+ read -p "Georafische Breite (lat) des berufl. Wohnsitzes (dezimale Schreibweise; dd.dddddd): " fill_lat_work
+ gradlatwork="$(echo "$fill_lat_work" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ while [ -z "$(echo "$fill_lat_work" | egrep '^-*[[:digit:]]{1,2}\.[[:digit:]]*$')" -o "$gradlatwork" -gt "90" ]; do
+  echo "Ungültiges Format für Georafische Breite (lat)"
+  read -p "Bitte erneut eingeben (dezimale Schreibweise; dd.dddddd): " fill_lat_work
+  gradlatwork="$(echo "$fill_lat_work" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ done
+ read -p "Georafische Länge (lon) des berufl. Wohnsitzes (dezimale Schreibweise; ddd.dddddd): " fill_lon_work
+ gradlonwork="$(echo "$fill_lon_work" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ while [ -z "$(echo "$fill_lon_work" | egrep '^-*[[:digit:]]{1,3}\.[[:digit:]]*$')" -o "$gradlonwork" -gt "180" ]; do
+  echo "Ungültiges Format für Georafische Länge (lon)"
+  read -p "Bitte erneut eingeben (dezimale Schreibweise; ddd.dddddd): " fill_lon_work
+  gradlonwork="$(echo "$fill_lon_work" | sed 's/^-*\([[:digit:]]*\)\.[[:digit:]]*/\1/')"
+ done
+fi
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "url_beruf" ]) && read -p "URL (berufl.; Bsp.:http://www.example.com): " fill_url_work
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "email1_beruf" ]) && read -p "Primäre E-mail (berufl.): " fill_email_work1
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "email2_beruf" ]) && read -p "Weitere E-mail (berufl.): " fill_email_work2
+[ "$newdata" == "yes" ] && read -p "Notizen (Eventuelle Zeilenumbrüche mit \\n angeben): " fill_note
+[ "$modifymodus" == "yes" -a "$modtype" == "notiz" ] && read -p "Notizen: " fill_note
+([ "$newdata" == "yes" ] || [ "$modifymodus" == "yes" -a "$modtype" == "sprache" ]) && read -p "Sprache der Person (Beispiel: de-DE): " fill_lang
+}
+adrprint1() {
+    if ([ "$showlabel" == "yes" ] || [ -n "${nachname}" -o -n "${vorname}" -o -n "$birthday" -o -n "$muttersprache" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Persönliche Daten"
+    fi
+    [ -n "${nachname}" -o "$showlabel" == "yes" ] && printf 'Nachname             : %0s\n' "${nachname^}"
+    [ -n "${vorname}" -o "$showlabel" == "yes" ] && printf 'Vorname              : %0s\n' "${vorname^}"
+    [ -n "${birthday}" -o "$showlabel" == "yes" ] && printf 'Geburtstag           : %0s\n' "$birthday"
+    [ -n "${muttersprache}" -o "$showlabel" == "yes" ] && printf 'Sprache              : %0s\n' "$muttersprache"
+
+    if ([ "$showlabel" == "yes" ] || [ -n "$adr_home_strasse" -o -n "$adr_home_plz" -o -n "$adr_home_ort" -o -n "$adr_home_land" -o -n "$geo_uri_home" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Adresse privat"
+    fi
+    [ -n "$adr_home_strasse" -o "$showlabel" == "yes" ] && printf 'Straße               : %0s\n' "$adr_home_strasse"
+    ([ "$showlabel" == "yes" ] || [ -n "$adr_home_plz" -o -n "$adr_home_ort" ]) && printf 'PLZ/Ort              : %0s %0s\n' "$adr_home_plz" "$adr_home_ort"
+    [ -n "$adr_home_land" -o "$showlabel" == "yes" ] && printf 'Land                 : %0s\n' "$adr_home_land"
+    if [ -n "$geo_uri_home" -o "$showlabel" == "yes" ]; then
+     geolathome="$(echo "${geo_uri_home}" | sed 's/geo:\(.*\),.*/\1/')"
+     geolonhome="$(echo "${geo_uri_home}" | sed 's/geo:.*,\(.*\)/\1/')"
+     osmurlhome="https://www.openstreetmap.org/?mlat=${geolathome}&mlon=${geolonhome}#map=15/${geolathome}/${geolonhome}"
+     printf 'Geo-URI              : %0s\n' "${geo_uri_home}"
+     [ ! "$showlabel" == "yes" ] && printf 'OSM-Link             : %0s\n' "$osmurlhome"
+    fi      
+    if ([ "$showlabel" == "yes" ] || [ -n "$con_tel_home" -o -n "$con_mob_home" -o -n "$con_website_home" -o -n "$con_email_home" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten privat"
+    fi
+    [ -n "$con_tel_home" -o "$showlabel" == "yes" ] && printf 'Telefon              : %0s\n' "$con_tel_home"
+    [ -n "$con_mob_home" -o "$showlabel" == "yes" ] && printf 'Telefon mobil        : %0s\n' "$con_mob_home"
+    [ -n "$con_website_home" -o "$showlabel" == "yes" ] && printf 'Homepage             : %0s\n' "$con_website_home"
+    [ -n "$con_email_home" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_home"
+   
+    if ([ "$showlabel" == "yes" ] || [ -n "$adr_work_org" -o -n "$org_work_abt" -o -n "$adr_work_strasse" -o -n "$adr_work_plz" -o -n "$adr_work_ort" -o -n "$adr_work_land" -o -n "$org_work_beruf" -o -n "$geo_uri_work" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Adresse Arbeit"
+    fi
+    [ -n "$adr_work_org" -o "$showlabel" == "yes" ] && printf 'Organisation         : %0s\n' "$adr_work_org"
+    [ -n "$org_work_abt" -o "$showlabel" == "yes" ] && printf 'Abteilung            : %0s\n' "$org_work_abt"
+    [ -n "$adr_work_strasse" -o "$showlabel" == "yes" ] && printf 'Straße               : %0s\n' "$adr_work_strasse"
+    ([ "$showlabel" == "yes" ] || [ -n "$adr_work_plz" -o -n "$adr_work_ort" ]) && printf 'PLZ/Ort              : %0s %0s\n' "$adr_work_plz" "$adr_work_ort"
+    [ -n "$adr_work_land" -o "$showlabel" == "yes" ] && printf 'Land                 : %0s\n' "$adr_work_land"
+    [ -n "$org_work_beruf" -o "$showlabel" == "yes" ] && printf 'Beruf                : %0s\n' "$org_work_beruf"
+    if [ -n "$geo_uri_work" -o "$showlabel" == "yes" ]; then
+     geolatwork="$(echo "${geo_uri_work}" | sed 's/geo:\(.*\),.*/\1/')"
+     geolonwork="$(echo "${geo_uri_work}" | sed 's/geo:.*,\(.*\)/\1/')"
+     osmurlwork="https://www.openstreetmap.org/?mlat=${geolatwork}&mlon=${geolonwork}#map=15/${geolatwork}/${geolonwork}"
+     printf 'Geo-URI              : %0s\n' "${geo_uri_work}"
+     [ ! "$showlabel" == "yes" ] && printf 'OSM-Link             : %0s\n' "$osmurlwork"
+    fi   
+    if ([ "$showlabel" == "yes" ] || [ -n "$con_tel_work" -o -n "$con_mob_work" -o -n "$con_website_work" -o -n "$con_email_work" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten Arbeit"
+    fi
+    [ -n "$con_tel_work" -o "$showlabel" == "yes" ] && printf 'Telefon              : %0s\n' "$con_tel_work"
+    [ -n "$con_mob_work" -o "$showlabel" == "yes" ] && printf 'Telefon mobil        : %0s\n' "$con_mob_work"
+    [ -n "$con_website_work" -o "$showlabel" == "yes" ] && printf 'Homepage             : %0s\n' "$con_website_work"
+    [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
+
+    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$toxcontent" ]); then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
+     [ "$showlabel" == "yes" ] && echo "MessengerIDs; etc."
+    fi
+}
+adrprint2() {
+    if [ -n "$sonstiges" -o "$showlabel" == "yes" ]; then
+     let printcounter++
+     echo -e "\n${vcardcheck}.${printcounter} Sonstiges"
+     echo -e "$sonstiges" | sed 's/^/                       /;1s/^ */Notizen              : /'
+    fi
+}
+
+while getopts e:hl:m:n:w opt
+
+do 
+ case $opt in
+ 
+  m) modifymodus="yes"
+  
+     allmodtype=(geburtstag tel_fest_priv tel_mob_priv str_nr_priv geo_wohns_priv url_priv email1_priv email2_priv firma tel_fest_beruf tel_mobil_beruf str_nr_beruf geo_wohns_beruf url_beruf email1_beruf email2_beruf notiz sprache)
+     arraylist="$(echo "${allmodtype[@]}" | tr ' ' '\n' | sed '
+                                                               s/_/ /g
+                                                               s/\(\<.\)/\U\1/g
+                                                               s/Str Nr Priv/Straße,Hausnummer,PLZ und Ort Priv/
+                                                               s/Geo Wohns Priv/Geokoordinaten Wohnsitz Priv/
+                                                               s/Str Nr Beruf/Straße,Hausnummer,PLZ und Ort Beruf/
+                                                               s/Geo Wohns Beruf/Geokoordinaten Wohnsitz Beruf/
+                                                               s/ Beruf/ berufl./g
+                                                               s/\(Firma\)/\1, Abteilung und Berufsbezeichnung/
+                                                               s/ Fest / Festnetz /g
+                                                               s/ Mob / Mobil /g
+                                                               s/ Priv/ Privat/g
+                                                               s/Str /Straße /g
+                                                               s/Tel /Telefon /1
+                                                              ' | nl)"
+     echo "$arraylist"
+     read -p "Bitte Nummer eingeben: " modanswer
+     modtype="${allmodtype[$(($modanswer-1))]}"
+  
+     if [ "$OPTARG" == "del" ]; then
+      modifytype="del"
+     elif [ "$OPTARG" == "mod" ]; then
+      modifytype="mod"
+      datenabfrage
+     else
+      usage
+      echo "Ungültige Option!"
+      exit 1
+     fi
+
+     shift $(("$OPTIND"-1))
+     break
+  ;;
+ 
+  n) newdata="yes"
+     if [ "$OPTARG" == "vcf" ]; then
+     
+      # Eingabe eines neuen .vcf-Datensatzes
+      datenabfrage
+         
+      # Bei leeren Einträgen wird das Gerüst aus .vcf-Datei gelöscht.
+      vcfcard="$(vcfvorlage)"
+      test -z "$fill_birthday" && vcfcard="$(echo "$vcfcard" | sed '/^BDAY:/d')"
+      test -z "$fill_tel_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,voice;/d')"
+      test -z "$fill_mob_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,cell;/d')"
+      test -z "$fill_strasse_home" -a -z "$fill_plz_home" -a -z "$fill_ort_home" -a -z "$fill_land_home"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=home;/d')"
+      test -z "$fill_lat_home" -o -z "$fill_lon_home" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=home/d')"
+      test -z "$fill_url_home" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=home/d')"
+      test -z "$fill_email_home1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=home:/d')"
+      test -z "$fill_email_home2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=home:/d')"
+      test -z "$fill_firma" -a -z "$fill_abteilung" -a -z "$fill_beruf" && vcfcard="$(echo "$vcfcard" | sed '/^ORG:/d')"
+      test -z "$fill_tel_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,voice;/d')"
+      test -z "$fill_mob_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,cell;/d')"
+      test -z "$fill_strasse_work" -a -z "$fill_plz_work" -a -z "$fill_ort_work" -a -z "$fill_land_work"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=work;/d')"
+      test -z "$fill_lat_work" -o -z "$fill_lon_work" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=work/d')"
+      test -z "$fill_url_work" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=work/d')"
+      test -z "$fill_email_work1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=work:/d')"
+      test -z "$fill_email_work2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=work:/d')"
+      test -z "$fill_note" && vcfcard="$(echo "$vcfcard" | sed '/^NOTE:/d')"
+      test -z "$fill_lang" && vcfcard="$(echo "$vcfcard" | sed '/^LANG:/d')"
+      # Unnütze Zeilenumbrüche (Label, Note etc.) werden entfernt.
+      vcfcard="$(echo "$vcfcard" | sed 's/"\\n/"/g;s/\\n"/"/g;s/\\n *"/"/g')"
+      # Zum debuggen
+      #echo "$vcfcard" && exit
+      
+     elif [ "$OPTARG" == "briar" ]; then
+     
+      read -p "Bitte Nachnamen eingeben: " briarnachname
+      read -p "Bitte Vornamen eingeben: " briarvorname
+      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " briaraccountname
+      read -p "Bitte BriarID eingeben (ohne Scheme; briar://): " briaridwithouts
+      
+     elif [ "$OPTARG" == "tox" ]; then
+     
+      read -p "Bitte Nachnamen eingeben: " toxnachname
+      read -p "Bitte Vornamen eingeben: " toxvorname
+      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " toxaccountname
+      read -p "Bitte ToxID eingeben (76 Zeichen): " newtoxid
+
+      while [ ! "$(printf "$newtoxid" | wc -m)" == "76" ]; do
+       echo "ToxID ist keine 76'Zeichen lang."
+       read -p "Bitte ToxID erneut eingeben (76 Zeichen): " newtoxid
+      done
+     
+     else
+      
+      usage
+      echo -e "Ungültiges Argument.\n"
+      exit 1
+      
+     fi
+     
+     echo "Adressdatei wird gesichert ..."
+     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+     ccdecrypt "${pathofaddress}/address.lst.cpt"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccdecrypt "${pathofaddress}/address.lst.cpt"
+     done
+     
+     if [ "$OPTARG" == "vcf" ]; then
+     
+      seiteteil1="$(sed -n '1,/^END:VCF/p' "${pathofaddress}/address.lst" | sed '$d')"
+      seiteteil2="$(sed -n '/^END:VCF/,$p' "${pathofaddress}/address.lst")"
+      echo "$seiteteil1" >"${pathofaddress}/address.lst"
+      echo "$vcfcard" >>"${pathofaddress}/address.lst"
+      echo "$seiteteil2" >>"${pathofaddress}/address.lst"
+      
+     elif [ "$OPTARG" == "briar" ]; then
+
+      briarnewline="$(echo "${briarnachname}:${briarvorname}:${briaraccountname}:${briaridwithouts}")"
+      sed -i 's/\(END:BRIAR\)/'"$briarnewline"'\n\1/' "${pathofaddress}/address.lst"
+
+     elif [ "$OPTARG" == "tox" ]; then
+
+      toxnewline="$(echo "${toxnachname}:${toxvorname}:${toxaccountname}:${newtoxid}")"
+      sed -i 's/\(END:TOX\)/'"$toxnewline"'\n\1/' "${pathofaddress}/address.lst"
+     
+     fi
+     
+     echo "Datei wird wieder verschlüsselt ..."
+     ccencrypt "${pathofaddress}/address.lst"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccencrypt "${pathofaddress}/address.lst"
+     done
+     
+     exit
+  ;;
+  
+  w) # Änderung der Adressdatei manuell vornehmen.
+  
+     echo "Adressdatei wird gesichert ..."
+     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+     ccdecrypt "${pathofaddress}/address.lst.cpt"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccdecrypt "${pathofaddress}/address.lst.cpt"
+     done
+     
+     nano "${pathofaddress}/address.lst"
+     
+     echo "Datei wird wieder verschlüsselt ..."
+     ccencrypt "${pathofaddress}/address.lst"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccencrypt "${pathofaddress}/address.lst"
+     done
+     exit
+  ;;
+  
+  h) usage
+     exit
+  ;;
+  
+  l) if [ "$OPTARG" == "file" ]; then
+      ccat ${pathofaddress}/address.lst.cpt
+     elif [ "$OPTARG" == "label" ]; then
+      showlabel="yes"
+      vcardcheck=1
+      onlylabel="$(adrprint1)"$'\n'
+      onlylabel+="$(adrprint2)"
+      labellist1="$(echo "$onlylabel" | sed '/:/s/^\(.\{21\}\).*/  \1/;/^MessengerIDs/s/^/  /;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */')"
+      echo "$labellist1"
+      echo ""
+     elif [ "$OPTARG" == "miss" ]; then
+      misslabel="yes"
+      showlabel="yes"
+      vcardcheck=1
+      onlylabel="$(adrprint1)"
+      onlylabel+="$(adrprint2)"
+      labellist1="$(echo "$onlylabel" | sed 's/^\(.*\) *:.*/\1/;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */;/^* Kontaktdaten sonstige/,$d')"
+      # Wichtig die Variablen hier zu löschen!
+      unset showlabel
+      unset vcardcheck
+      shift $(("$OPTIND"-1))
+      break
+     else
+      usage
+      echo "Ungültige Angabe"
+     fi
+     exit
+  ;;
+  
+  e) if [ "$OPTARG" == "vcf" ]; then
+      echo "Daten werden als vcf exportiert"
+      exportmodus="vcfformat"
+      read -p "Soll in [v]cf-Datei oder in [Q]R-Code exportiert werden? " vcfexport
+      while true; do
+        case "$vcfexport" in
+          v|V) vcftype="vcf"
+               read -p "Bitte Dateinamen der angeben (Suffix .vcf wird automatisch hinzugefügt): " vcffilename
+                  filesuffix="${vcffilename##*.}"
+                  if [ ! "$filesuffix" == "vcf" ]; then
+                   vcffilename+=".vcf"
+                  fi
+                  if [ -e ./"$vcffilename" ]; then
+                   echo "Datei existiert bereits."
+                   read -p "[u]eberschreiben oder [a]bbrechen? " delfileanswer
+                   while true; do
+                    case "$delfileanswer" in
+                      u|U|"") rm -f ./"$vcffilename"
+                       break
+                       ;;
+                      a|A) exit
+                       ;;
+                      *) echo "Fehlerhafte Eingabe!"
+                       ;;
+                    esac
+                   done
+                  fi
+           break
+           ;;
+          q|Q) vcftype="qr"
+           break
+           ;;
+          *) echo "Fehlerhafte Eingabe!"
+           ;;
+        esac
+      done  
+     # Ausgabe auf der Standardasgabe des Terminals.
+     elif [ "$OPTARG" == "messid" ]; then
+      exportmodus="qrcode"
+     else
+      echo "Ungültige Option (${OPTARG}). Exportieren der Daten nicht möglich."
+      exit 1
+     fi
+     
+     # Das shiften ist wichtig, damit die Namen später korrekt ausgewertet werden.
+     shift $(("$OPTIND"-1))
+  ;;
+  
+  ?) exit 1
+  ;;
+  
+ esac
+done
+
+if [ -z "$1" ]; then
+ usage
+ echo -e "\nBitte mindestens einen Nachnamen im ersten Argument angeben. Skript wird abgebrochen."
+ exit 1
+fi
+
+# Der komplette Content aus der Adressenliste wird in folgende Variable geschrieben.
+if [ "$modifymodus" == "yes" ]; then
+ echo "Adressdatei wird gesichert und zur Bearbeitung entschlüsselt ..."
+ cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+ ccdecrypt "${pathofaddress}/address.lst.cpt"
+ while [ ! "$?" == "0" ]; do
+  echo "Bitte Passwort erneut eingeben:"
+  ccdecrypt "${pathofaddress}/address.lst.cpt"
+ done
+ adrlistcontent="$(cat ${pathofaddress}/address.lst)"
+ # Hier wird parallel zu adrlistcontent eine weitere Variable mit gleichem Inhalt,
+ # aber mit Zeilennummern definiert.
+ # Mit folgender Variable wird später die Zeile identifiziert, die geändert werden soll.
+ adrlistcontentnr="$(echo "$adrlistcontent" | nl -ba -nln)"
+else
+ echo "Adressdaten werden aus der verschlüsselten Datei abgerufen."
+ adrlistcontent="$(ccat ${pathofaddress}/address.lst.cpt)"
+fi
+if [ -z "$adrlistcontent" ]; then
+ exit 1
+fi
+
+# Variablen definieren
+briarscheme="briar://"
+
+nachname="$1"
+vorname="$2"
+
+vcfcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:VCARD/,/END:VCARD/p')"
+if [ "$modifymodus" == "yes" ]; then
+ vcfcontentnr="$(echo "$adrlistcontentnr" | sed -n '/BEGIN:VCARD/,/END:VCARD/p')"
+fi
+anzvcfcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:VCARD/p' | wc -l)"
+ 
+vcardcheck="0"
+messcounter="0"
+for vcardbeg in $(seq 1 "$anzvcfcontent"); do
+ 
+  vcfsinglecontent="$(echo "$vcfcontent" | sed -n '1,/END:VCARD/p')"
+  if [ "$modifymodus" == "yes" -a "$vcardcheck" == "0" ]; then
+   vcfsinglecontentnr="$(echo "$vcfcontentnr" | sed -n '1,/END:VCARD/p')"
+  fi
+   
+  # Der ggf. ermittelte Vorname wird über die vcard ermittelt.
+  # Es muss nämlich in der Adressenliste immer eine vcard angelegt werden, auch wenn z.B. nur eine Briar-Adresse vorhanden ist.
+  # Achtung: Ansonsten werden Briar-/Tox-Adressen nicht mit ausgewertet!
+  #          Außerdem sollten alle grep-Befehle mit -i ausgeführt werden (ignoriert Groß/Kleinschreibung):
+  if [ "$1" == "*" ]; then
+   vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:')"
+   nachname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f1 -d';')"
+   vorname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f2 -d';')"
+  elif [ -n "$2" ]; then
+   vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:'"$nachname"';'"$vorname"';')"
+  else
+   vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:'"$nachname"';')"
+   vorname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f2 -d';')"
+  fi
+  
+  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Toxadressen gesucht.
+  if [ -n "$vcfsinglecontentline" ]; then
+  
+   let vcardcheck++
+   
+   # Variablen werden definiert
+   briarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+   toxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+
+   adr_home_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=home;')"
+   adr_home_strasse="$(echo "$adr_home_singleline" | cut -d';' -f5)"
+   adr_home_plz="$(echo "$adr_home_singleline" | cut -d';' -f8)"
+   adr_home_ort="$(echo "$adr_home_singleline" | cut -d';' -f6)"
+   adr_home_land="$(echo "$adr_home_singleline" | cut -d';' -f9)"
+   geo_uri_home="$(echo "$vcfsinglecontent" | sed -n 's/^GEO.*TYPE=home.*\(geo:.*\)/\1/p')"
+
+   adr_work_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=work;')"
+   adr_work_orgaline="$(echo "$vcfsinglecontent" | sed -n 's/^ORG:\(.*\)/\1/p')"
+   adr_work_org="$(echo "$adr_work_orgaline" | cut -d';' -f1)"
+   org_work_abt="$(echo "$adr_work_orgaline" | cut -d';' -f2)"
+   org_work_beruf="$(echo "$adr_work_orgaline" | cut -d';' -f3)"
+   adr_work_strasse="$(echo "$adr_work_singleline" | cut -d';' -f5)"
+   adr_work_plz="$(echo "$adr_work_singleline" | cut -d';' -f8)"
+   adr_work_ort="$(echo "$adr_work_singleline" | cut -d';' -f6)"
+   adr_work_land="$(echo "$adr_work_singleline" | cut -d';' -f9)"
+   geo_uri_work="$(echo "$vcfsinglecontent" | sed -n 's/^GEO.*TYPE=work.*\(geo:.*\)/\1/p')"
+   
+   con_tel_home="$(echo "$vcfsinglecontent" | grep '^TEL;TYPE=home,voice;' | cut -d';' -f3 | sed 's/^.*tel:\(.*\)/\1/')"
+   con_mob_home="$(echo "$vcfsinglecontent" | grep '^TEL;TYPE=home,cell;' | cut -d';' -f3 | sed 's/^.*tel:\(.*\)/\1/')"
+   con_website_home="$(echo "$vcfsinglecontent" | sed  -n 's/^URL;TYPE=home:\(.*\)/\1/p')"
+   anzemail_home="$(echo "$vcfsinglecontent" | grep -c  '^EMAIL.*TYPE=home')"
+   if [ "$anzemail_home" == "1" ]; then
+    con_email_home="$(echo "$vcfsinglecontent" | sed  -n 's/^EMAIL.*TYPE=home:\(.*\)/\1/p')"
+   elif [ "$anzemail_home" -gt "1" ]; then
+    con_email_home="$(echo "$vcfsinglecontent" | grep '^EMAIL' | sort -n -t'=' -k2 | sed -n 's/^EMAIL.*TYPE=home:\(.*\)/\1/p' | sed -n -e '1h;1!p;${g;p;}' | sed '2,$s/^/                       /')"
+   fi
+   
+   con_tel_work="$(echo "$vcfsinglecontent" | grep '^TEL;TYPE=work,voice;' | cut -d';' -f3 | sed 's/^.*tel:\(.*\)/\1/')"
+   con_mob_work="$(echo "$vcfsinglecontent" | grep '^TEL;TYPE=work,cell;' | cut -d';' -f3 | sed 's/^.*tel:\(.*\)/\1/')"
+   con_website_work="$(echo "$vcfsinglecontent" | sed  -n 's/^URL;TYPE=work:\(.*\)/\1/p')"
+   anzemail_work="$(echo "$vcfsinglecontent" | grep -c  '^EMAIL.*TYPE=work')"
+   if [ "$anzemail_work" == "1" ]; then
+    con_email_work="$(echo "$vcfsinglecontent" | sed  -n 's/^EMAIL.*TYPE=work:\(.*\)/\1/p')"
+   elif [ "$anzemail_work" -gt "1" ]; then
+    con_email_work="$(echo "$vcfsinglecontent" | grep '^EMAIL' | sort -n -t'=' -k2 | sed -n 's/^EMAIL.*TYPE=work:\(.*\)/\1/p' | sed -n -e '1h;1!p;${g;p;}' | sed '2,$s/^/                       /')"
+   fi
+
+   muttersprache="$(echo "$vcfsinglecontent" | sed -n 's/^LANG:\(.*$\)/\1/p')"
+   sonstiges="$(echo "$vcfsinglecontent" | sed  -n 's/^NOTE:\(.*\)/\1/p')"
+   birthday="$(echo "$vcfsinglecontent" | sed  -n 's/^BDAY:\(....\)\(..\)\(..\)/\3.\2.\1/p')"
+   dateofvcf="$(echo "$vcfsinglecontent" | sed  -n 's/^REV:\(....\)\(..\)\(..\)T......Z/\3.\2.\1/p')"
+
+   if [ ! "$modifymodus" == "yes" ]; then
+
+    printcounter=0
+    # ** Formatierte Ausgabe der Adresse **
+    # Formatierte Ausgabe der Überschrift (zentriert) - Anfang
+    headline="${vcardcheck}. ${nachname^} ${vorname^}"
+    terminalbreite="$(tput cols)"
+    headlinechars="$(echo "$headline" | wc -c)"
+    lrleerzeichen=2
+    anzlinienzeichen=$((${terminalbreite} - ${headlinechars} - 2 * ${lrleerzeichen}))
+    anzliniezeichenlire=$((${anzlinienzeichen}/2 + ${anzlinienzeichen}%2 ))
+    printf '%*s' "$anzliniezeichenlire" | tr " " '_'
+    printf '%*s' $lrleerzeichen
+    printf "$headline"
+    printf '%*s' $lrleerzeichen
+    printf '%*s\n' "$anzliniezeichenlire" | tr " " '_'
+    # Formatierte Ausgabe der Überschrift - Ende
+    
+    if [ "$misslabel" == "yes" ]; then
+     onlylabel2="$(adrprint1)"
+    fi
+    adrprint1
+    
+   
+    # *** BriarIDs werden verarbeitet ***
+    if [ -n "$briarcontent" ]; then
+     anzbriarid="$(echo "$briarcontent" | wc -l)"
+     for brid in $(seq 1 "$anzbriarid"); do
+      briarline="$(echo "$briarcontent" | sed -n ''${brid}'p')"
+      briarname="$(echo "$briarline" | cut -d':' -f3)"
+      briarid="$(echo "$briarline" | cut -d':' -f4 | sed 's/^/BriarID '"$brid"'            : briar:\/\//')"
+      echo "$briarid (${briarname})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nBriarID ('"$briarname"'): briar:\/\/'"$(echo "$briarline" | cut -d':' -f4)"'/')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:BriarID ('"$briarname"'): briar:\/\/'"$(echo "$briarline" | cut -d':' -f4)"'\n\1/')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       let messcounter++
+       bridid="$(echo "$briarline" | cut -d':' -f4 | sed 's/^/briar:\/\//')"
+       messprint+="${messcounter};${bridid};Briar;${briarname};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+   
+    # *** ToxIDs werden verarbeitet ***
+    if [ -n "$toxcontent" ]; then
+     anztoxid="$(echo "$toxcontent" | wc -l)"
+     for tid in $(seq 1 "$anztoxid"); do
+      toxline="$(echo "$toxcontent" | sed -n ''${tid}'p')"
+      toxname="$(echo "$toxline" | cut -d':' -f3)"
+      toxid="$(echo "$toxline" | cut -d':' -f4)"
+      echo "ToxID ${tid}              : ${toxid} (${toxname})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nToxID ('"$toxname"'): '"$toxid"'/')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:ToxID ('"$toxname"'): '"$toxid"'\n\1/')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       let messcounter++
+       toxdid="$(echo "$toxline" | cut -d':' -f4)"
+       messprint+="${messcounter};${toxdid};Tox;${toxname};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+   
+    if [ "$exportmodus" == "vcfformat" -a "$vcftype" == "vcf" ]; then
+     echo "$vcfsinglecontent" >>"${vcffilename}"
+    elif [ "$exportmodus" == "vcfformat" -a "$vcftype" == "qr" ]; then
+     qrencode -o "vcfinqrcode_${nachname,,}_${vorname,,}.png" "$(echo "$vcfsinglecontent")"
+    fi
+
+    adrprint2
+   
+    echo -e "\nStand des Datensatzes: ${dateofvcf}"
+    
+   # Ende der ! "$modifymodus" == "yes" - Verzweigung (Ausgabe auf Bildschirm)
+   fi
+   
+   # Zum debuggen
+   # echo "$vcfsinglecontent"
+   
+  fi
+  
+  # Hier wird jeweils der bereits getestete Bereich aus der Variable gelöscht.
+  vcfcontent="$(echo "$vcfcontent" | sed '1,/END:VCARD/d')"
+  if [ "$modifymodus" == "yes" ]; then
+   vcfcontentnr="$(echo "$vcfcontentnr" | sed '1,/END:VCARD/d')"
+  fi
+  
+done
+
+if [ "$misslabel" == "yes" -a "$vcardcheck" == "1" ]; then
+
+ echo ""
+ printf -- "-%.0s" $(seq $(tput cols))
+ echo -e "\n\n*** Fehlender Inhalt (ohne Berücksichtigung von Notizen und Kontaktdaten sonstige) ***"
+ labellist2="$(echo "$onlylabel2" | sed '/:/s/^\(.\{21\}\).*/\1/;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */;/^ /d;/Kontaktdaten sonstige/,$d;/OSM-Link/d')"
+ diffliste="$(diff -y --width=90 <(echo "$labellist1") <(echo "$labellist2"))"
+ # Mit folgender Anweisung werden alle überflüssigen Unterelemente (also mit content) ausgeblendet: /^\*\|<\|^$/!d
+ echo "$diffliste" | sed 's/^\t.*<.*//;s/^\(.*\)\t*|.*$/\1/;/</!s/^\(.\{23\}\).*/\1/;s/\(^\*.*\)</\1/;/^\*/s/\*//3;s/</< fehlt/;/^\*\|<\|^$/!d'
+
+elif [ "$misslabel" == "yes" -a ! "$vcardcheck" == "1" ]; then
+
+ if [ "$vcardcheck" == "0" ]; then
+  echo -e "\nKeine passende Übereinstimmung gefunden."
+ elif [ "$vcardcheck" -gt "1" ]; then
+  echo -e "\nMehrere passende Übereinstimmungen gefunden."
+ fi
+
+# Es wird nur eine Zeile in Adressdatei geändert, wenn explizit ein Datensatz gefunden wurde.
+elif [ "$modifymodus" == "yes" -a "$vcardcheck" == "1" ]; then
+
+ # / werden gequotet, da es sonst mit sed zu Konflikten kommt.
+ [ -n "$fill_abteilung" ] && fill_abteilung="$(echo "$fill_abteilung" | sed 's/\//\\\//g')"
+ [ -n "$fill_beruf" ] && fill_beruf="$(echo "$fill_beruf" | sed 's/\//\\\//g')"
+ [ -n "$fill_birthday" ] && fill_birthday="$(echo "$fill_birthday" | sed 's/\//\\\//g')"
+ [ -n "$fill_email_home1" ] && fill_email_home1="$(echo "$fill_email_home1" | sed 's/\//\\\//g')"
+ [ -n "$fill_email_home2" ] && fill_email_home2="$(echo "$fill_email_home2" | sed 's/\//\\\//g')"
+ [ -n "$fill_email_work1" ] && fill_email_work1="$(echo "$fill_email_work1" | sed 's/\//\\\//g')"
+ [ -n "$fill_email_work2" ] && fill_email_work2="$(echo "$fill_email_work2" | sed 's/\//\\\//g')"
+ [ -n "$fill_firma" ] && fill_firma="$(echo "$fill_firma" | sed 's/\//\\\//g')"
+ [ -n "$fill_land_home" ] && fill_land_home="$(echo "$fill_land_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_land_work" ] && fill_land_work="$(echo "$fill_land_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_lang" ] && fill_lang="$(echo "$fill_lang" | sed 's/\//\\\//g')"
+ [ -n "$fill_lat_home" ] && fill_lat_home="$(echo "$fill_lat_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_lat_work" ] && fill_lat_work="$(echo "$fill_lat_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_lon_home" ] && fill_lon_home="$(echo "$fill_lon_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_lon_work" ] && fill_lon_work="$(echo "$fill_lon_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_mob_home" ] && fill_mob_home="$(echo "$fill_mob_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_mob_work" ] && fill_mob_work="$(echo "$fill_mob_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_note" ] && fill_note="$(echo "$fill_note" | sed 's/\//\\\//g')"
+ [ -n "$fill_ort_home" ] && fill_ort_home="$(echo "$fill_ort_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_ort_work" ] && fill_ort_work="$(echo "$fill_ort_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_plz_home" ] && fill_plz_home="$(echo "$fill_plz_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_plz_work" ] && fill_plz_work="$(echo "$fill_plz_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_strasse_home" ] && fill_strasse_home="$(echo "$fill_strasse_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_strasse_work" ] && fill_strasse_work="$(echo "$fill_strasse_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_tel_home" ] && fill_tel_home="$(echo "$fill_tel_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_tel_work" ] && fill_tel_work="$(echo "$fill_tel_work" | sed 's/\//\\\//g')"
+ [ -n "$fill_url_home" ] && fill_url_home="$(echo "$fill_url_home" | sed 's/\//\\\//g')"
+ [ -n "$fill_url_work" ] && fill_url_work="$(echo "$fill_url_work" | sed 's/\//\\\//g')"
+
+ # Änderung des Geburtstages
+ if [ "$modifytype" == "mod" -a -n "$fill_birthday" -a -n "$(echo "$vcfsinglecontentnr" | grep 'BDAY:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*BDAY:.*/\1/p')"
+  sed -i ''$linenumber's/\(^BDAY:\).*$/\1'"$fill_birthday"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_birthday" -a -z "$(echo "$vcfsinglecontentnr" | grep 'BDAY:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/BDAY:'"$fill_birthday"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "geburtstag" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*BDAY:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Telefon Festnetz privat
+ if [ "$modifytype" == "mod" -a -n "$fill_tel_home" -a -n "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=home,voice')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=home,voice;VALUE=uri:tel:.*/\1/p')"
+  sed -i ''$linenumber's/\(^TEL;TYPE=home,voice;VALUE=uri:tel:\).*$/\1'"$fill_tel_home"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_tel_home" -a -z "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=home,voice')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/TEL;TYPE=home,voice;VALUE=uri:tel:'"$fill_tel_home"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "tel_fest_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=home,voice;VALUE=uri:tel:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+
+ # Änderung Telefon Mobil privat
+ if [ "$modifytype" == "mod" -a -n "$fill_mob_home" -a -n "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=home,cell')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=home,cell;VALUE=uri:tel:.*/\1/p')"
+  sed -i ''$linenumber's/\(^TEL;TYPE=home,cell;VALUE=uri:tel:\).*$/\1'"$fill_mob_home"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_mob_home" -a -z "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=home,cell')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/TEL;TYPE=home,cell;VALUE=uri:tel:'"$fill_mob_home"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "tel_mob_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=home,cell;VALUE=uri:tel:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Straße,Hausnummer,PLZ und Ort Privat
+ if ([ "$modifytype" == "mod" ] && [ -n "$fill_strasse_home" -o -n "$fill_plz_home" -o -n "$fill_ort_home" -o -n "$fill_land_home" ]) && [ -n "$(echo "$vcfsinglecontentnr" | grep 'ADR;TYPE=home;LABEL')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ADR;TYPE=home;LABEL.*/\1/p')"
+  sed -i ''$linenumber's/\(^ADR;TYPE=home;LABEL=\).*$/\1"'"${fill_strasse_home}"'\\n'"${fill_plz_home}"' '"${fill_ort_home}"'\\n'"${fill_land_home}"'":;;'"${fill_strasse_home}"';'"${fill_ort_home}"';;'"${fill_plz_home}"';'"${fill_land_home}"'/' "${pathofaddress}/address.lst"
+ elif ([ "$modifytype" == "mod" ] && [ -n "$fill_strasse_home" -o -n "$fill_plz_home" -o -n "$fill_ort_home" -o -n "$fill_land_home" ]) && [ -z "$(echo "$vcfsinglecontentnr" | grep 'ADR;TYPE=home;LABEL')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/ADR;TYPE=home;LABEL="'"${fill_strasse_home}"'\\n'"${fill_plz_home}"' '"${fill_ort_home}"'\\n'"${fill_land_home}"'":;;'"${fill_strasse_home}"';'"${fill_ort_home}"';;'"${fill_plz_home}"';'"${fill_land_home}"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "str_nr_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ADR;TYPE=home;LABEL.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Geokoordinaten Wohnsitz Privat
+ if ([ "$modifytype" == "mod" ] && [ -n "$fill_lat_home" -a -n "$fill_lon_home" ]) && [ -n "$(echo "$vcfsinglecontentnr" | grep 'GEO;TYPE=home:geo:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*GEO;TYPE=home:geo:.*/\1/p')"
+  sed -i ''$linenumber's/\(^GEO;TYPE=home:geo:\).*$/\1'"${fill_lat_home}"','"${fill_lon_home}"'/' "${pathofaddress}/address.lst"
+ elif ([ "$modifytype" == "mod" ] && [ -n "$fill_lat_home" -a -n "$fill_lon_home" ]) && [ -z "$(echo "$vcfsinglecontentnr" | grep 'GEO;TYPE=home:geo:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/GEO;TYPE=home:geo:'"${fill_lat_home}"','"${fill_lon_home}"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "geo_wohns_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*GEO;TYPE=home:geo:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Url Privat
+ if [ "$modifytype" == "mod" -a -n "$fill_url_home" -a -n "$(echo "$vcfsinglecontentnr" | grep 'URL;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*URL;TYPE=home:.*/\1/p')"
+  sed -i ''$linenumber's/\(^URL;TYPE=home:\).*$/\1'"$fill_url_home"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_url_home" -a -z "$(echo "$vcfsinglecontentnr" | grep 'URL;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/URL;TYPE=home:'"$fill_url_home"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "url_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*URL;TYPE=home:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Email1 Privat
+ if [ "$modifytype" == "mod" -a -n "$fill_email_home1" -a -n "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;PREF=1;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;PREF=1;TYPE=home:.*/\1/p')"
+  sed -i ''$linenumber's/\(^EMAIL;PREF=1;TYPE=home:\).*$/\1'"$fill_email_home1"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_email_home1" -a -z "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;PREF=1;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/EMAIL;PREF=1;TYPE=home:'"$fill_email_home1"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "email1_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;PREF=1;TYPE=home:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Email2 Privat
+ if [ "$modifytype" == "mod" -a -n "$fill_email_home2" -a -n "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;TYPE=home:.*/\1/p')"
+  sed -i ''$linenumber's/\(^EMAIL;TYPE=home:\).*$/\1'"$fill_email_home2"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_email_home2" -a -z "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;TYPE=home:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/EMAIL;TYPE=home:'"$fill_email_home2"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "email2_priv" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;TYPE=home:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Firma, Abteilung und Berufsbezeichnung
+ if ([ "$modifytype" == "mod" ] && [ -n "$fill_firma" -o -n "$fill_abteilung" -o -n "$fill_beruf" ]) && [ -n "$(echo "$vcfsinglecontentnr" | grep 'ORG:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ORG:.*/\1/p')"
+  sed -i ''$linenumber's/\(^ORG:\).*$/\1'"${fill_firma}"';'"${fill_abteilung}"';'"${fill_beruf}"'/' "${pathofaddress}/address.lst"
+ elif ([ "$modifytype" == "mod" ] && [ -n "$fill_firma" -o -n "$fill_abteilung" -o -n "$fill_beruf" ]) && [ -z "$(echo "$vcfsinglecontentnr" | grep 'ORG:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/ORG:'"${fill_firma}"';'"${fill_abteilung}"';'"${fill_beruf}"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "firma" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ORG:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Telefon Festnetz berufl.
+ if [ "$modifytype" == "mod" -a -n "$fill_tel_work" -a -n "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=work,voice')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=work,voice;VALUE=uri:tel:.*/\1/p')"
+  sed -i ''$linenumber's/\(^TEL;TYPE=work,voice;VALUE=uri:tel:\).*$/\1'"$fill_tel_work"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_tel_work" -a -z "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=work,voice')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/TEL;TYPE=work,voice;VALUE=uri:tel:'"$fill_tel_work"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "tel_fest_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=work,voice;VALUE=uri:tel:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Telefon Mobil berufl.
+ if [ "$modifytype" == "mod" -a -n "$fill_mob_work" -a -n "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=work,cell')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=work,cell;VALUE=uri:tel:.*/\1/p')"
+  sed -i ''$linenumber's/\(^TEL;TYPE=work,cell;VALUE=uri:tel:\).*$/\1'"$fill_mob_work"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_mob_work" -a -z "$(echo "$vcfsinglecontentnr" | grep 'TEL;TYPE=work,cell')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/TEL;TYPE=work,cell;VALUE=uri:tel:'"$fill_mob_work"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "tel_mobil_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*TEL;TYPE=work,cell;VALUE=uri:tel:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Straße,Hausnummer,PLZ und Ort berufl.
+ if ([ "$modifytype" == "mod" ] && [ -n "$fill_strasse_work" -o -n "$fill_plz_work" -o -n "$fill_ort_work" -o -n "$fill_land_work" ]) && [ -n "$(echo "$vcfsinglecontentnr" | grep 'ADR;TYPE=work;LABEL')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ADR;TYPE=work;LABEL.*/\1/p')"
+  sed -i ''$linenumber's/\(^ADR;TYPE=work;LABEL=\).*$/\1"'"${fill_strasse_work}"'\\n'"${fill_plz_work}"' '"${fill_ort_work}"'\\n'"${fill_land_work}"'":;;'"${fill_strasse_work}"';'"${fill_ort_work}"';;'"${fill_plz_work}"';'"${fill_land_work}"'/' "${pathofaddress}/address.lst"
+ elif ([ "$modifytype" == "mod" ] && [ -n "$fill_strasse_work" -o -n "$fill_plz_work" -o -n "$fill_ort_work" -o -n "$fill_land_work" ]) && [ -z "$(echo "$vcfsinglecontentnr" | grep 'ADR;TYPE=work;LABEL')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/ADR;TYPE=work;LABEL="'"${fill_strasse_work}"'\\n'"${fill_plz_work}"' '"${fill_ort_work}"'\\n'"${fill_land_work}"'":;;'"${fill_strasse_work}"';'"${fill_ort_work}"';;'"${fill_plz_work}"';'"${fill_land_work}"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "str_nr_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*ADR;TYPE=work;LABEL.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Geokoordinaten Wohnsitz berufl.
+ if ([ "$modifytype" == "mod" ] && [ -n "$fill_lat_work" -a -n "$fill_lon_work" ]) && [ -n "$(echo "$vcfsinglecontentnr" | grep 'GEO;TYPE=work:geo:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*GEO;TYPE=work:geo:.*/\1/p')"
+  sed -i ''$linenumber's/\(^GEO;TYPE=work:geo:\).*$/\1'"${fill_lat_work}"','"${fill_lon_work}"'/' "${pathofaddress}/address.lst"
+ elif ([ "$modifytype" == "mod" ] && [ -n "$fill_lat_work" -a -n "$fill_lon_work" ]) && [ -z "$(echo "$vcfsinglecontentnr" | grep 'GEO;TYPE=work:geo:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/GEO;TYPE=work:geo:'"${fill_lat_work}"','"${fill_lon_work}"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "geo_wohns_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*GEO;TYPE=work:geo:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Url berufl.
+ if [ "$modifytype" == "mod" -a -n "$fill_url_work" -a -n "$(echo "$vcfsinglecontentnr" | grep 'URL;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*URL;TYPE=work:.*/\1/p')"
+  sed -i ''$linenumber's/\(^URL;TYPE=work:\).*$/\1'"$fill_url_work"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_url_work" -a -z "$(echo "$vcfsinglecontentnr" | grep 'URL;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/URL;TYPE=work:'"$fill_url_work"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "url_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*URL;TYPE=work:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Email1 berufl.
+ if [ "$modifytype" == "mod" -a -n "$fill_email_work1" -a -n "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;PREF=1;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;PREF=1;TYPE=work:.*/\1/p')"
+  sed -i ''$linenumber's/\(^EMAIL;PREF=1;TYPE=work:\).*$/\1'"$fill_email_work1"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_email_work1" -a -z "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;PREF=1;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/EMAIL;PREF=1;TYPE=work:'"$fill_email_work1"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "email1_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;PREF=1;TYPE=work:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Email2 berufl.
+ if [ "$modifytype" == "mod" -a -n "$fill_email_work2" -a -n "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;TYPE=work:.*/\1/p')"
+  sed -i ''$linenumber's/\(^EMAIL;TYPE=work:\).*$/\1'"$fill_email_work2"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_email_work2" -a -z "$(echo "$vcfsinglecontentnr" | grep 'EMAIL;TYPE=work:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/EMAIL;TYPE=work:'"$fill_email_work2"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "email2_beruf" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*EMAIL;TYPE=work:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Notiz
+ if [ "$modifytype" == "mod" -a -n "$fill_note" -a -n "$(echo "$vcfsinglecontentnr" | grep 'NOTE:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*NOTE:.*/\1/p')"
+  sed -i ''$linenumber's/\(^NOTE:\).*$/\1'"$fill_note"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_note" -a -z "$(echo "$vcfsinglecontentnr" | grep 'NOTE:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/NOTE:'"$fill_note"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "notiz" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*NOTE:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+ 
+ # Änderung Sprache
+ if [ "$modifytype" == "mod" -a -n "$fill_lang" -a -n "$(echo "$vcfsinglecontentnr" | grep 'LANG:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*LANG:.*/\1/p')"
+  sed -i ''$linenumber's/\(^LANG:\).*$/\1'"$fill_lang"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -n "$fill_lang" -a -z "$(echo "$vcfsinglecontentnr" | grep 'LANG:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$linenumber's/\(END:VCARD\)/LANG:'"$fill_lang"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a "$modtype" == "sprache" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*LANG:.*/\1/p')"
+  if [ "$linenumber" -gt "0" ]; then
+   sed -i ''"$linenumber"'d' "${pathofaddress}/address.lst"
+  else
+   echo "Keinen Eintrag zum Löschen gefunden."
+  fi
+ fi
+
+ # Zeitstempel wird aktualisiert.
+ # 1.   mod - Eine bestehende Zeile wurde zuvor geändert - Anzahl der Zeilen ist identisch
+ # 2.   mod - Eine Zeile mit Zeitstempel wurde zuvor hinzugefügt - Anzahl der Zeilen erhöht sich um 1
+ # 3+4. del - Eine bestehende Zeile wurde zuvor gelöscht - Anzahl der Zeilen verringert sich um 1
+ # Hinweis: Der Zeitstempel wird generell dann angewendet, wenn die Adressdatei zum Ändern (nicht ccat) geöffnet wurde.
+ # Also auch dann, wenn ggf. der Inhalt gar nicht geändert wurde.
+ if [ "$modifytype" == "mod" -a -n "$(echo "$vcfsinglecontentnr" | grep 'REV:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*REV:.*/\1/p')"
+  sed -i ''$linenumber's/^\(REV:\).*$/\1'"$(date +%Y%m%dT%H%M%SZ)"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "mod" -a -z "$(echo "$vcfsinglecontentnr" | grep 'REV:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$(($linenumber + 1))'s/\(END:VCARD\)/REV:'"$(date +%Y%m%dT%H%M%SZ)"'\n\1/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a -n "$(echo "$vcfsinglecontentnr" | grep 'REV:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*REV:.*/\1/p')"
+  sed -i ''$(($linenumber - 1))'s/^\(REV:\).*$/\1'"$(date +%Y%m%dT%H%M%SZ)"'/' "${pathofaddress}/address.lst"
+ elif [ "$modifytype" == "del" -a -z "$(echo "$vcfsinglecontentnr" | grep 'REV:')" ]; then
+  linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
+  sed -i ''$(($linenumber - 1))'s/\(END:VCARD\)/REV:'"$(date +%Y%m%dT%H%M%SZ)"'\n\1/' "${pathofaddress}/address.lst"
+ fi
+ 
+# Ende Verzweigung: "$modifymodus" == "yes" -a "$vcardcheck" == "1"
+fi
+   
+if [ "$modifymodus" == "yes" ]; then
+ echo "Die Adressdatei wird wieder verschlüsselt (bei Wunsch auch mit neuem Passwort) ..."
+ ccencrypt "${pathofaddress}/address.lst"
+ while [ ! "$?" == "0" ]; do
+  echo "Bitte Passwort erneut eingeben:"
+  ccencrypt "${pathofaddress}/address.lst"
+ done
+fi
+
+# Ausgabe einer MessengerID als QR-Code auf der Standardausgabe.
+if [ "$exportmodus" == "qrcode" ]; then
+ echo -e '\n                    *** Export einer MessengerID als QR-Code ***'
+ #printf -- "─%.0s" $(seq $(tput cols))
+ # Bildschirm-Ausgabe
+ printf 'Num ID                                                                               Messeng. Mess-Name  Nachname   Vorname\n' 
+ #printf -- "─%.0s" $(seq $(tput cols))
+ while read -r line; do
+  [ -n "$line" ] && printf '%3d %-80s %-8.8s %-10.10s %-10.10s %-10.10s\n' "$(echo "$line" | cut -f1 -d';')" \
+                                                                           "$(echo "$line" | cut -f2 -d';')" \
+                                                                           "$(echo "$line" | cut -f3 -d';')" \
+                                                                           "$(echo "$line" | cut -f4 -d';')" \
+                                                                           "$(echo "$line" | cut -f5 -d';')" \
+                                                                           "$(echo "$line" | cut -f6 -d';')"
+ done <<<"$messprint"
+ #printf -- "─%.0s" $(seq $(tput cols))
+ echo ""
+ while [ -z "$(echo "$messprint" | grep "^${messausw};")" ]; do
+  read -p "Bitte Auswahl eingeben: " messausw
+ done
+ selectedmessid="$(echo "$messprint" | grep "^${messausw};" | cut -f2 -d';')"
+ read -p "Soll der QR-Code auf [S]tandardausgabe oder als PNG-[B]ild ausgegeben werden? " qrexport
+ while true; do
+  case "$qrexport" in
+    s|S) qrencode -o - -t ASCIIi "$selectedmessid"
+         qrtype="stout"
+         break
+        ;;
+    b|B) qrencode -o "vcfinqrcode_${nachname,,}_${vorname,,}.png" "$selectedmessid"
+         qrtype="bild"
+         break
+        ;;
+      *) echo "Fehlerhafte Eingabe"
+        ;;
+  esac
+ done
+fi
+
+# Die vcf-Elemente, die in einem QR-Code umgewandelt werden, sind aufgrund ihrer Größe
+# in eine png-Datei gespeichert. Diese wird nach dem Anzeigen sofort wieder gelöscht.
+if [ "$exportmodus" == "vcfformat" -a "$vcftype" == "qr" ] || [ "$exportmodus" == "qrcode" -a "$qrtype" == "bild" ]; then
+
+ # xdg-open - öffnet die Datei mit dem Standard-Bildbetrachter des Benutzers.
+ # Der find-Befehl in Verbindung mit exec ist nötig, da xdg-open nicht mehrere Dateien auf einmal öffnet.
+ find . -maxdepth 1 -type f -name vcfinqrcode\*.png -exec xdg-open {} \;
+ if [ "$?" == "0" ]; then
+  rm -i ./vcfinqrcode*.png
+ else
+  echo "Datei(en) vcfinqrcode*.png befindet sich nun im Ordner ${PWD}"
+ fi
+ 
+fi
+ 
+if [ "$vcardcheck" == "0" ]; then
+ 
+  echo "Es konnte keine Vcard mit dem Namen ${*} ermittelt werden."
+  
+  checkbriarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -ci '^'"$nachname"':')"
+  checktoxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -ci '^'"$nachname"':')"
+  if [ "$checkbriarcontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
+   echo "Es wurden ${checkbriarcontent} BriarIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
+   echo "Bitte erst einen passenden VCARD-Datensatz erstellen mit $0 -n vcf"
+  fi
+  
+fi
+ 
+echo ""
+# Inhalt löschen
+unset adrlistcontent
+
