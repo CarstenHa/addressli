@@ -1,0 +1,20 @@
+# Adressliste
+# Diese Datei muss umbenannt werden in address.lst
+# Achtung! Wenn Briar,Tox usw. definiert wurden, muss auch immer eine VCARD angelegt werden.
+# Ansonsten greift die Suche mit 'addressli' nicht richtig!
+# Neue Adressen können mit der Option -n vcf aufgenommen werden (siehe auch address -h).
+# Nur für vCARD 4.0
+BEGIN:VCF
+END:VCF
+
+# BriarID ohne Scheme (briar://), wird später eingefügt. 
+# Beispiel: Nachname:Vorname:Accountname:BriarID
+# Neue Adressen können mit der Option -n briar aufgenommen werden (siehe auch address -h).
+BEGIN:BRIAR
+END:BRIAR
+
+# ToxIDs
+# Beispiel: Nachname:Vorname:Accountname:76stellige_ToxID
+# Neue Adressen können mit der Option -n tox aufgenommen werden (siehe auch address -h).
+BEGIN:TOX
+END:TOX
