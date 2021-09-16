@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# to-do:
-# Ländercodes in lesbarer Form ausgeben.
-# -m - Zeilenumbruch in Notizen
-# Formatüberprüfungen der einzelnen Elemente aus vcf-Datensatz (geo-URI ist schon eingebunden).
-# Einzelne MessengerIDs löschen bzw. ändern.
-# mehrere Sprachen
+# License: GNU Lesser General Public License v3.0
+# See: http://www.gnu.org/licenses/lgpl-3.0.html
+# Written by Carsten Jacob
+# Please feel free to contact me coding@langstreckentouren.de
+# https://github.com/CarstenHa
 
 # Wenn neue vcf-Elemente aufgenommen werden sollen, hier die wichtigen Abschnitte:
 # 1. Funktion vcfvorlage
