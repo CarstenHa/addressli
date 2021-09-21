@@ -80,7 +80,7 @@ Options:
 	        Benötigt mindestens den Nachnamen.
 	        Angabe des Vornamens ist optional, wenn nur ein Datensatz existiert.
 
-   -m [argument]
+   -m [argument] [nachname] [evtl. vorname]
 
 	ändert einzelne Elemente aus einem vcf-Datensatz. Benötigt eins der folgenden Argumente:
 	mod   - Fügt eine neue Zeile zu einem bestehenden Datensatz hinzu oder ändert eine bestehende Zeile.
