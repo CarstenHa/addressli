@@ -11,7 +11,8 @@ Alle Programme kann man in einem Rutsch installieren mit:
 Möchte man die Daten mit einem Server (z.B. einem Raspi) synchronisieren, wird außerdem scp aus dem Paket `openssh` benötigt, welches jedoch bei den meisten Linux-Distributionen bereits installiert ist.  
 Für die Synchronisation und die Option `-C` muss die Datei `config/addressli.conf` angelegt und angepasst werden. Eine Vorlagendatei befindet sich im selben Ordner.  
 Für die Einrichtung von SSH gibt es sehr gute Anleitungen im Internet. Eine ist zum Beispiel:
-<https://wiki.ubuntuusers.de/SSH/>
+<https://wiki.ubuntuusers.de/SSH/>  
+Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien zwischen Client und Host 'von Hand' abgleichen und ggf. auch ein Backup der Daten machen.
 
 Für die Terminverwaltung muss eine Profildatei `dates/dates.rc` angelegt werden. Auch hierfür ist im selben Ordner eine Datei mit vielen Beispielen vorhanden.
 

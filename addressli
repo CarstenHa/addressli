@@ -126,6 +126,8 @@ Options:
 	für die Synchronisation zwischen Client und Host.
 	Bei Problemen kann man die Logdatei aufrufen mit:
 	journalctl -r | grep 'addressli'
+	Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien zwischen Client
+	und Host 'von Hand' abgleichen und ggf. ein Backup der Daten machen.
 
    -w
 
@@ -420,9 +422,9 @@ do
         # aber die remote-Datei (remotehash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
         elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" ]; then
          echo "Download der Daten vom Server ${sshuserhost} ..."
-         scp -P "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remoteaddrfile}" "${pathofaddress}/"
+         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remoteaddrfile}" "${pathofaddress}/"
          exitdown1=$?
-         scp -P "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedatefile}" "${pathofaddress}/dates"
+         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedatefile}" "${pathofaddress}/dates"
          exitdown2=$?
          if [ "$exitdown1" == 0 -a "$exitdown2" == 0 ]; then
           checksum >"${pathofaddress}/.hash.log"
@@ -434,9 +436,9 @@ do
         # aber die bearbeitete Datei (newhash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
         elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" ]; then
          echo "Upload der Daten zum Server ${sshuserhost} ..."
-         scp -P "$sshport" -i "$sshkeyfile" "${pathofaddress}/address.lst.cpt" "${sshuserhost}:${remoteaddrfile%/*}/"
+         scp -pP "$sshport" -i "$sshkeyfile" "${pathofaddress}/address.lst.cpt" "${sshuserhost}:${remoteaddrfile%/*}/"
          exitup1=$?
-         scp -P "$sshport" -i "$sshkeyfile" "${pathofaddress}/dates/dates.rc" "${sshuserhost}:${remotedatefile%/*}/"
+         scp -pP "$sshport" -i "$sshkeyfile" "${pathofaddress}/dates/dates.rc" "${sshuserhost}:${remotedatefile%/*}/"
          exitup2=$?
          if [ "$exitup1" == 0 -a "$exitup2" == 0 ]; then
           checksum >"${pathofaddress}/.hash.log"
