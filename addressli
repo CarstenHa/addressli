@@ -56,6 +56,30 @@ Es stehen folgende Optionen zur Verfügung:
  
 Options:
 
+   -c
+
+	Kalender des laufenden Monats wird angezeigt.
+
+   -C
+
+	Jahreskalender mit Feiertagen wird angezeigt. Benötigt einen Ländercode in der Datei
+	config/addressli.conf
+	Dieser kann mit gcal -?? ermittelt werden.
+	Beispiel:
+	AD (für Andorra)
+
+   -d
+
+	Listet die Termine für den letzten, den aktuellen und den kommenden Monat auf.
+	Termine müssen in der Datei dates/dates.rc eingetragen werden.
+	Beispiele finden sich in der Datei dates/example.rc
+	Weitere Informationen findet man auch unter:
+	https://www.gnu.org/software/gcal/manual/gcal.html
+
+   -D
+
+	Öffnet die Datei dates/dates.rc in Editor nano zur Bearbeitung.
+
    -e [argument] [name]
 
 	Exportiert das Ergebnis der Suche mit den angegebenen Namen. Benötigt ein weiteres
@@ -88,13 +112,20 @@ Options:
 	Zeitstempel wird aktualisiert.
 
    -n [argument]
-   
+
 	nimmt einen neuen Datensatz in die Adressdatei auf.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
 	briar - Nimmt einen neuen Briar-Datensatz auf.
 	tox   - Nimmt einen neuen Tox-Datensatz auf.
 	vcf   - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
 	        Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
+
+   -s
+
+	Synchronisation mit einem Server mittels scp. Die Datei .hash.log dient hier als Referenzdatei
+	für die Synchronisation zwischen Client und Host.
+	Bei Problemen kann man die Logdatei aufrufen mit:
+	journalctl -r | grep 'addressli'
 
    -w
 
@@ -105,6 +136,17 @@ Mit folgender Zeile kann man address.lst "manuell" verschlüsseln:
 ccencrypt "${pathofaddress}/address.lst"
 Mit folgender Zeile kann man address.lst "manuell" entschlüsseln:
 ccdecrypt "${pathofaddress}/address.lst.cpt"
+
+Weitere Beispiele:
+
+Autostart:
+Hat man das Gnome-Terminal, kann man dieses Programm zum Beispiel mit folgender Befehlszeile zu den
+Startprogrammen hinzufügen:
+gnome-terminal --full-screen -- bash -c 'addressli -sd; read -p "Einen schönen Tag noch! Fenster schließen mit [ENTER]"'
+
+Cron:
+Auch die Verwendung mit Cron ist möglich. Ggf. muss die Zeile [ -z "$SSH_AUTH_SOCK" ] && export SSH_AUTH_SOCK= ...
+in der Datei addressli.conf komplettiert und einkommentiert werden.
 
 EOU
 }
@@ -304,12 +346,151 @@ adrprint2() {
      echo -e "$sonstiges" | sed 's/^/                       /;1s/^ */Notizen              : /'
     fi
 }
+gcalcheck() {
+    if [ -z "$(type -p gcal)" ]; then
+     echo "Das Programm gcal ist nicht installiert. Skript wird abgebrochen!"
+     exit 1
+    fi
+}
+confcheck() {
+    if [ ! -e "${pathofaddress}/config/addressli.conf" ]; then
+     echo -e "Datei ${pathofaddress}/config/addressli.conf existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/config/example.conf\nSkript wird abgebrochen!"
+     exit 1
+    else
+     conffile="${pathofaddress}/config/addressli.conf"
+     source "$conffile" 2>/dev/null
+    fi
+}
+datefilecheck() {
+    if [ ! -e "${pathofaddress}/dates/dates.rc" ]; then
+     echo -e "Ressource-Datei ${pathofaddress}/dates/dates.rc existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/dates/example.rc\n Skript wird abgebrochen!"
+     exit 1
+    else
+     datefile="${pathofaddress}/dates/dates.rc"
+    fi
+}
+checksum() {
+    datefilecheck
+    md5sum "${pathofaddress}/address.lst.cpt"
+    md5sum "$datefile"
+}
+[ ! -e "${pathofaddress}/.hash.log" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts e:hl:m:n:w opt
+while getopts cCdDe:hl:m:n:sw opt
 
 do 
  case $opt in
- 
+
+  s) confcheck
+     if [ "$async" == "yes" ]; then
+
+      echo "**** Synchronisation der Daten mit dem Server ${sshuserhost#*@} ****"
+      if [ ! "$(ping -c 1 "${sshuserhost#*@}" &>/dev/null; echo $?)" == 0 ]; then
+
+       logger -s --id=$$ "${0}: Server ${sshuserhost#*@} nicht erreichbar"
+
+      else
+
+        oldhash="$(cat "${pathofaddress}/.hash.log" | cut -f1 -d' ')"
+        newhash="$(checksum | cut -f1 -d' ')"
+        remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile}; md5sum ${remotedatefile}")"
+        remotehash="$(echo "$remotehashraw" | cut -f1 -d' ')"
+
+        if [ "$oldhash" != "$newhash" -a "$oldhash" != "$remotehash" ]; then
+         logger -s --id=$$ "Es gibt einen Konflikt zwischen einer lokalen und einer Remote-Datei. ${0} -s für weitere Analyse."
+         hcounter=0
+         while read -r hashline; do
+          let hcounter++
+          hashfilename="$(echo "$remotehashraw" | sed -n "${hcounter}p")"
+          if [ -n "$(echo "$newhash" | grep "$hashline")" -a -n "$(echo "$newhash" | grep "$hashline")" ]; then
+           echo "${hashfilename##*/} ist identisch."
+          else
+           echo "${hashfilename##*/} ist unterschiedlich."
+           # Nur die Textdatei kann analysiert werden. address.lst.cpt ist binär und verschlüsselt.
+           if [ "${hashfilename##*/}" == "dates.rc" ]; then
+            echo "                                      local < = > remote"
+            diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
+           fi
+          fi
+         done <<<"$oldhash"
+         echo "Dateien bitte manuell ändern und anschließend ggf. die Datei .hash.log löschen."
+        elif [ "$oldhash" == "$newhash" -a "$oldhash" == "$remotehash" ]; then
+         echo "${0}: Keine Veränderungen der Dateien festgestellt." | tee >(logger --id=$$)
+        # Bearbeitete Datei (newhash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+        # aber die remote-Datei (remotehash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+        elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" ]; then
+         echo "Download der Daten vom Server ${sshuserhost} ..."
+         scp -P "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remoteaddrfile}" "${pathofaddress}/"
+         exitdown1=$?
+         scp -P "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedatefile}" "${pathofaddress}/dates"
+         exitdown2=$?
+         if [ "$exitdown1" == 0 -a "$exitdown2" == 0 ]; then
+          checksum >"${pathofaddress}/.hash.log"
+          echo "${0}: Download der Daten wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+         else
+          logger -s --id=$$ "Fehler beim Download der Daten."
+         fi
+        # Die remote-Datei (remotehash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+        # aber die bearbeitete Datei (newhash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+        elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" ]; then
+         echo "Upload der Daten zum Server ${sshuserhost} ..."
+         scp -P "$sshport" -i "$sshkeyfile" "${pathofaddress}/address.lst.cpt" "${sshuserhost}:${remoteaddrfile%/*}/"
+         exitup1=$?
+         scp -P "$sshport" -i "$sshkeyfile" "${pathofaddress}/dates/dates.rc" "${sshuserhost}:${remotedatefile%/*}/"
+         exitup2=$?
+         if [ "$exitup1" == 0 -a "$exitup2" == 0 ]; then
+          checksum >"${pathofaddress}/.hash.log"
+          echo "${0}: Upload der Daten wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+         else
+          logger -s --id=$$ "Fehler beim Upload der Daten."
+         fi
+        fi
+
+      # Ende der Verzweigung (ping)
+      fi
+
+     else
+      echo "Keine Synchronisation in ${conffile} eingerichtet."
+     fi
+
+     # Das shiften ist wichtig, damit ggf.die Namen für die Adressausgabe später korrekt ausgewertet werden.
+     # Damit kann Option -s mit anderen Möglichkeiten kombiniert werden.
+     shift $(($OPTIND - 1))
+     # Wenn keine weiteren Argumente nach Option -s definiert sind, wird Skript beendet.
+     [ -z "$*" ] && exit
+  ;;
+  c) gcalcheck
+     gcal
+     echo ""
+     exit
+  ;;
+  C) gcalcheck
+     confcheck
+     ccontent() {
+      for cc in ${countrycodes[@]}; do
+       echo "$cc"
+      done | nl
+     }
+     ccontent
+     while [ -z "$auswahl" ]; do
+      read -p "Bitte Ländercode auswählen: " land
+      auswahl="$(ccontent | grep "$land" | sed 's/^ *//' | cut -f2)"
+     done
+     gcal -q${auswahl} --holiday-list $(date +%Y)
+     echo ""
+     exit
+  ;;
+  d) gcalcheck
+     datefilecheck
+     gcal -f "$datefile" -c .
+     echo ""
+     exit
+  ;;
+  D) gcalcheck
+     datefilecheck
+     nano "$datefile"
+     exit
+  ;;
   m) modifymodus="yes"
   
      allmodtype=(geburtstag tel_fest_priv tel_mob_priv str_nr_priv geo_wohns_priv url_priv email1_priv email2_priv firma tel_fest_beruf tel_mobil_beruf str_nr_beruf geo_wohns_beruf url_beruf email1_beruf email2_beruf notiz sprache)

@@ -1,0 +1,30 @@
+; Weitere Infos auch unter:
+; https://www.gnu.org/software/gcal/manual/gcal.html
+; Ein Kommentar beginnt immer wie diese Zeile
+; 0*d1#999 definiert jeden Tag eines jeden Jahres
+
+; Ein fester Termin
+20220602 Ein Termin am 02.06.2022
+; Immer wiederkehrendes Ereignis (z.B. Geburtstag)
+00000501 Geburtstag
+; Geburtstag mit Anzeige des Alters und mit Ausgabe in einem Zeitraum von 1952 bis 2062
+00000502 Max Mustermanns %B1964 . Geburtstag%i1952#2062
+; Zeitraum
+20230602#16 Urlaub vom 02.06.2023 - 16.06.2023
+; Aktuelle Uhrzeit in einem Termin ausgeben
+20220503 Aktuelle Uhrzeit: %t  Uhr und der Termin ist um 10.00 Uhr
+; Jeden 2. Dienstag im Mai (jedes Jahr)
+000005di2 Jeden 2. Dienstag im Mai
+; Hier beachte man die Unterschiede in Schaltjahren
+00000299 Letzter Tag im Februar
+; Sommerzeit
+000003so9 Beginn der Sommerzeit. Nicht vergessen die Uhren um eine Stunde vor zu stellen.
+000010so9 Ende der Sommerzeit. Nicht vergessen die Uhren um eine Stunde zurück zu stellen.
+; Jeden Montag im Jahr 2022
+2022*d1mon#99MON.7 Jeden Montag im Jahr 2022
+; Probearbeiten vom 22. Mai bis 23. Juni von Mo-Fr (%r)
+2022*d1#999 %iMai22#Jun23 %rProbearbeiten
+; Selbsterklärend
+0*w99sa Der letzte Samstag des Jahres (Jedes Jahr wiederkehrendes Ereignis)
+; Selbsterklärend
+0000@e+3 3 Tage nach Ostersonntag (jedes Jahr)
