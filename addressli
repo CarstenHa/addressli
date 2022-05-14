@@ -365,7 +365,7 @@ confcheck() {
 }
 datefilecheck() {
     if [ ! -e "${pathofaddress}/dates/dates.rc" ]; then
-     echo -e "Ressource-Datei ${pathofaddress}/dates/dates.rc existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/dates/example.rc\n Skript wird abgebrochen!"
+     echo -e "Ressource-Datei ${pathofaddress}/dates/dates.rc existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/dates/example.rc\nSkript wird abgebrochen!"
      exit 1
     else
      datefile="${pathofaddress}/dates/dates.rc"
@@ -373,10 +373,10 @@ datefilecheck() {
 }
 checksum() {
     datefilecheck
-    md5sum "${pathofaddress}/address.lst.cpt"
-    md5sum "$datefile"
+    md5sum "${pathofaddress}/address.lst.cpt" 2>/dev/null
+    md5sum "$datefile" 2>/dev/null
 }
-[ ! -e "${pathofaddress}/.hash.log" ] && checksum >"${pathofaddress}/.hash.log"
+[ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
 while getopts cCdDe:hl:m:n:sw opt
 
@@ -384,6 +384,7 @@ do
  case $opt in
 
   s) confcheck
+     datefilecheck
      if [ "$async" == "yes" ]; then
 
       echo "**** Synchronisation der Daten mit dem Server ${sshuserhost#*@} ****"
@@ -393,60 +394,77 @@ do
 
       else
 
-        oldhash="$(cat "${pathofaddress}/.hash.log" | cut -f1 -d' ')"
-        newhash="$(checksum | cut -f1 -d' ')"
-        remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile}; md5sum ${remotedatefile}")"
-        remotehash="$(echo "$remotehashraw" | cut -f1 -d' ')"
+       listoffiles=(address.lst.cpt dates.rc)
+
+       for file in ${listoffiles[@]}; do
+
+        oldhash="$(cat "${pathofaddress}/.hash.log" | grep "$file" | cut -f1 -d' ')"
+
+        newcheck="$(checksum | grep "$file")"
+        newhash="$(echo "$newcheck" | cut -f1 -d' ')"
+        localdirname="$(echo "$newcheck" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
+        localdir="$(dirname "${localdirname}")"
+        localmoddate="$(stat --format=%Y "${localdirname}")"
+
+        remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
+        remotehash="$(echo "$remotehashraw" | grep "$file" | cut -f1 -d' ')"
+        remotedirname="$(echo "$remotehashraw" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
+        remotedir="$(dirname "${remotedirname}")"
+        remotemoddate="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" 'stat --format=%Y '"${remotedirname}"'')"
 
         if [ "$oldhash" != "$newhash" -a "$oldhash" != "$remotehash" ]; then
-         logger -s --id=$$ "Es gibt einen Konflikt zwischen einer lokalen und einer Remote-Datei. ${0} -s für weitere Analyse."
-         hcounter=0
-         while read -r hashline; do
-          let hcounter++
-          hashfilename="$(echo "$remotehashraw" | sed -n "${hcounter}p")"
-          if [ -n "$(echo "$newhash" | grep "$hashline")" -a -n "$(echo "$newhash" | grep "$hashline")" ]; then
-           echo "${hashfilename##*/} ist identisch."
-          else
-           echo "${hashfilename##*/} ist unterschiedlich."
-           # Nur die Textdatei kann analysiert werden. address.lst.cpt ist binär und verschlüsselt.
-           if [ "${hashfilename##*/}" == "dates.rc" ]; then
-            echo "                                      local < = > remote"
-            diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
-           fi
-          fi
-         done <<<"$oldhash"
-         echo "Dateien bitte manuell ändern und anschließend ggf. die Datei .hash.log löschen."
+
+         logger -s --id=$$ "Es gibt einen Konflikt mit der Datei ${file}."
+         if [ "${file}" == "dates.rc" ]; then
+          echo "                                      local < = > remote"
+          diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
+         fi
+         echo "Dateien bitte manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
+
         elif [ "$oldhash" == "$newhash" -a "$oldhash" == "$remotehash" ]; then
-         echo "${0}: Keine Veränderungen der Dateien festgestellt." | tee >(logger --id=$$)
+
+         echo "${0}: Keine Veränderung an Datei ${file} festgestellt." | tee >(logger --id=$$)
+
         # Bearbeitete Datei (newhash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
         # aber die remote-Datei (remotehash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" ]; then
-         echo "Download der Daten vom Server ${sshuserhost} ..."
-         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remoteaddrfile}" "${pathofaddress}/"
-         exitdown1=$?
-         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedatefile}" "${pathofaddress}/dates"
-         exitdown2=$?
-         if [ "$exitdown1" == 0 -a "$exitdown2" == 0 ]; then
+        # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
+        # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
+        elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" -a "$remotemoddate" -ge "$localmoddate" ]; then
+         echo "Download der Datei ${file} vom Server ${sshuserhost} ..."
+         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedir}/${file}" "${localdir}/"
+         exitdown=$?
+         if [ "$exitdown" == 0 ]; then
           checksum >"${pathofaddress}/.hash.log"
-          echo "${0}: Download der Daten wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+          echo "${0}: Download der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
          else
-          logger -s --id=$$ "Fehler beim Download der Daten."
+          logger -s --id=$$ "Fehler beim Download der Datei ${file}."
          fi
+
         # Die remote-Datei (remotehash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
         # aber die bearbeitete Datei (newhash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" ]; then
-         echo "Upload der Daten zum Server ${sshuserhost} ..."
-         scp -pP "$sshport" -i "$sshkeyfile" "${pathofaddress}/address.lst.cpt" "${sshuserhost}:${remoteaddrfile%/*}/"
-         exitup1=$?
-         scp -pP "$sshport" -i "$sshkeyfile" "${pathofaddress}/dates/dates.rc" "${sshuserhost}:${remotedatefile%/*}/"
-         exitup2=$?
-         if [ "$exitup1" == 0 -a "$exitup2" == 0 ]; then
+        # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
+        # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
+        elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" -a "$localmoddate" -ge "$remotemoddate" ]; then
+         echo "Upload der Datei ${file} zum Server ${sshuserhost} ..."
+         scp -pP "$sshport" -i "$sshkeyfile" "${localdir}/${file}" "${sshuserhost}:${remotedir}/"
+         exitup=$?
+         if [ "$exitup" == 0 ]; then
           checksum >"${pathofaddress}/.hash.log"
-          echo "${0}: Upload der Daten wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+          echo "${0}: Upload der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
          else
-          logger -s --id=$$ "Fehler beim Upload der Daten."
+          logger -s --id=$$ "Fehler beim Upload der Datei ${file}."
          fi
+
+        else
+
+         logger -s --id=$$ "Es gibt einen undefinierten Konflikt mit der Datei ${file}."
+         echo "Zeitstempel der lokalen ${file}: ${localmoddate}"
+         echo "Zeitstempel der Datei ${file} auf Server ${sshuserhost#*@}: ${remotemoddate}"
+         exit 1
+
         fi
+
+       done
 
       # Ende der Verzweigung (ping)
       fi
