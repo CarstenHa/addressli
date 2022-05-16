@@ -406,7 +406,7 @@ do
         localdir="$(dirname "${localdirname}")"
         localmoddate="$(stat --format=%Y "${localdirname}")"
 
-        remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
+        [ -z "$remotehashraw" ] && remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
         remotehash="$(echo "$remotehashraw" | grep "$file" | cut -f1 -d' ')"
         remotedirname="$(echo "$remotehashraw" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
         remotedir="$(dirname "${remotedirname}")"
@@ -458,8 +458,13 @@ do
         else
 
          logger -s --id=$$ "Es gibt einen undefinierten Konflikt mit der Datei ${file}."
-         echo "Zeitstempel der lokalen ${file}: ${localmoddate}"
-         echo "Zeitstempel der Datei ${file} auf Server ${sshuserhost#*@}: ${remotemoddate}"
+         printf 'Dateiame                      : %-30s\n' "${file}"
+         printf 'Server                        : %-30s\n' "${sshuserhost#*@}"
+         printf "Alter Hash-Wert aus .hash.log : %-30s\n" "${oldhash}"
+         printf 'Hash-Wert der lokalen Datei   : %-30s\n' "${newhash}"
+         printf 'Hash-Wert der Server-Datei    : %-30s\n' "${remotehash}"
+         printf 'Zeitstempel der lokalen Datei : %-30d\n' "${localmoddate}"
+         printf 'Zeitstempel der Server-Datei  : %-30d\n' "${remotemoddate}"
          exit 1
 
         fi
