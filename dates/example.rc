@@ -11,6 +11,8 @@
 00000502 Max Mustermanns %B1964 . Geburtstag%i1952#2062
 ; Zeitraum
 20230602#16 Urlaub vom 02.06.2023 - 16.06.2023
+; oder
+20230520#0610 Urlaub vom 20.05.2023 - 10.06.2023
 ; Aktuelle Uhrzeit in einem Termin ausgeben
 20220503 Aktuelle Uhrzeit: %t  Uhr und der Termin ist um 10.00 Uhr
 ; Jeden 2. Dienstag im Mai (jedes Jahr)
