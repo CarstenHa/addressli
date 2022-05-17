@@ -70,7 +70,7 @@ Options:
 
    -d
 
-	Listet die Termine für den letzten, den aktuellen und den kommenden Monat auf.
+	Listet die Termine des aktuellen und der kommenden zwei Monate auf.
 	Termine müssen in der Datei dates/dates.rc eingetragen werden.
 	Beispiele finden sich in der Datei dates/example.rc
 	Weitere Informationen findet man auch unter:
@@ -78,7 +78,7 @@ Options:
 
    -D
 
-	Öffnet die Datei dates/dates.rc in Editor nano zur Bearbeitung.
+	listet die Termine für die kommenden 12 Monate auf.
 
    -e [argument] [name]
 
@@ -130,6 +130,10 @@ Options:
 	und Host 'von Hand' abgleichen und ggf. ein Backup der Daten machen.
 
    -w
+
+	Öffnet die Datei dates/dates.rc in Editor nano zur Bearbeitung.
+
+   -W
 
 	mit dieser Option kann man die Datei address.lst im Editor nano manuell bearbeiten.
 
@@ -378,7 +382,7 @@ checksum() {
 }
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:hl:m:n:sw opt
+while getopts cCdDe:hl:m:n:swW opt
 
 do 
  case $opt in
@@ -507,13 +511,15 @@ do
   ;;
   d) gcalcheck
      datefilecheck
-     gcal -f "$datefile" -c .
+     gcal -f "$datefile" -c .+
      echo ""
      exit
   ;;
   D) gcalcheck
      datefilecheck
-     nano "$datefile"
+     gcal :
+     gcal -f "$datefile" :
+     echo ""
      exit
   ;;
   m) modifymodus="yes"
@@ -648,8 +654,14 @@ do
      
      exit
   ;;
-  
-  w) # Änderung der Adressdatei manuell vornehmen.
+
+  w) gcalcheck
+     datefilecheck
+     nano "$datefile"
+     exit
+  ;;
+
+  W) # Änderung der Adressdatei manuell vornehmen.
   
      echo "Adressdatei wird gesichert ..."
      cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
