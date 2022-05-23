@@ -120,6 +120,16 @@ Options:
 	vcf   - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
 	        Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
 
+   -r [argument]
+
+	Termine des aktuellen Tages an unterschiedliche Dienste übergeben.
+	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
+	mail   - Termine an eine E-Mail Adresse senden.
+	         Es muss ein SMTP-Client wie zum Beispiel msmtp installiert sein.
+	notify - Termine als Benachrichtigung mit notify-send auf dem Desktop
+	         ausgeben.
+	Für diese Option muss die Datei addressli.conf konfiguriert sein.
+
    -s
 
 	Synchronisation mit einem Server mittels scp. Die Datei .hash.log dient hier als Referenzdatei
@@ -146,13 +156,20 @@ ccdecrypt "${pathofaddress}/address.lst.cpt"
 Weitere Beispiele:
 
 Autostart:
+Beispiel 1:
 Hat man das Gnome-Terminal, kann man dieses Programm zum Beispiel mit folgender Befehlszeile zu den
 Startprogrammen hinzufügen:
 gnome-terminal --full-screen -- bash -c 'addressli -sd; read -p "Einen schönen Tag noch! Fenster schließen mit [ENTER]"'
+Beispiel 2 (Termine des Tages als Benachrichtigung anzeigen):
+$0 -r notify
 
 Cron:
 Auch die Verwendung mit Cron ist möglich. Ggf. muss die Zeile [ -z "$SSH_AUTH_SOCK" ] && export SSH_AUTH_SOCK= ...
 in der Datei addressli.conf komplettiert und einkommentiert werden.
+Beispiel 1 (Synchronisation zu jeder vollen Stunde):
+0 * * * * $0 -s
+Beispiel 2 (Termine des Tages einmalig beim Start mit E-Mail verschicken):
+@reboot $0 -r mail
 
 EOU
 }
@@ -382,10 +399,51 @@ checksum() {
 }
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:hl:m:n:swW opt
+while getopts cCdDe:hl:m:n:r:swW opt
 
 do 
  case $opt in
+
+  r) gcalcheck
+     confcheck
+     datefilecheck
+     # Einige gcal Optionen:
+     #--heading-text="Deine Termine heute:" (Personalisierte Überschrift)
+     #--exclude-fixed-dates-list-title (Überschrift unterdrücken)
+     if [ "$OPTARG" == mail ]; then
+
+      [ -z "$(type -p mail)" ] && logger -s --id=$$ "Das Programm mail ist nicht installiert. Skript wird abgebrochen!" && exit 1
+      gcalcontent="$(gcal --highlighting=no -f "$datefile" -c)"
+      # Wenn keine Termine vorliegen, ist gcalcontent leer und sendet dann nix.
+      if [ -n "$gcalcontent" ]; then
+       mailcounter=0
+       while [ "$mailcounter" -lt 5 -a "$mailexit" != 0 ]; do
+        echo "$gcalcontent" | mail -a "Content-Type: text/plain; charset=UTF-8" -s "$mailsubject" "$mailaddr"
+        mailexit="$?"
+        let mailcounter++
+        if [ "$mailexit" == 0 ]; then
+         echo "${0}: E-mail zugestellt am `date +%d.%m.%Y` um `date +%H:%M` Uhr." | tee >(logger --id=$$)
+         break
+        fi
+        sleep 30
+       done
+       [ "$mailcounter" -ge 5 ] && logger -s --id=$$ "Zustellen der Mail wurde nach 5 Versuchen abgebrochen."
+       [ "$mailexit" != 0 ] && logger -s --id=$$ "Fehler von mail (Exitstatus: ${mailexit})"
+      fi
+
+     elif [ "$OPTARG" == notify ]; then
+
+      gcalcontent="$(gcal --exclude-fixed-dates-list-title --highlighting=no -f "$datefile" -c)"
+      [ -z "$(type -p notify-send)" ] && logger -s --id=$$ "Das Programm notify-send aus dem Paket libnotify-bin ist nicht installiert. Skript wird abgebrochen!" && exit 1
+      [ -n "$gcalcontent" ] && notify-send -i /usr/share/icons/gnome/48x48/status/info.png "$notifysubject" "$gcalcontent"
+
+     else
+
+      echo "${OPTARG} ist nicht definiert."
+
+     fi
+     exit
+  ;;
 
   s) confcheck
      datefilecheck
