@@ -24,6 +24,10 @@
 000010so9 Ende der Sommerzeit. Nicht vergessen die Uhren um eine Stunde zurück zu stellen.
 ; Jeden Montag im Jahr 2022
 2022*d1mon#99MON.7 Jeden Montag im Jahr 2022
+; Alle 14 Tage am Montag 2022
+2022*d1mon#99MON.14 Alle 14 Tage am Montag 2022
+; Verschiebt den Montag um eine Woche. Ab dann alle 14 Tage.
+2022*d2mon#99MON.14 Alle 14 Tage am Montag in 2022 um eine Woche verschoben.
 ; Probearbeiten vom 22. Mai bis 23. Juni von Mo-Fr (%r)
 2022*d1#999 %iMai22#Jun23 %rProbearbeiten
 ; Selbsterklärend
