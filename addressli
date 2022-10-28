@@ -80,9 +80,16 @@ Options:
 
 	listet die Termine für die kommenden 12 Monate auf.
 
-   -e [argument] [name]
+   -e [argument]
 
-	Exportiert das Ergebnis der Suche mit den angegebenen Namen. Benötigt ein weiteres
+	exportiert die Feiertage eines angegeben Jahres in eine .ics-Datei.
+	Benötigt eine weitere Angabe in Form eines Formats. Folgende Formate können angegeben werden:
+
+	ics     - Exportiert Kalenderdaten in das .ics-Dateiformat.
+
+   -E [argument] [name]
+
+	Exportiert das Ergebnis der Adresssuche mit dem angegebenen Namen. Benötigt ein weiteres
 	Argument in Form eines Formats. Folgende Formate können zur Zeit angegeben werden:
 
 	vcf     - Standardformat für Adressdaten.
@@ -107,18 +114,21 @@ Options:
    -m [argument] [nachname] [evtl. vorname]
 
 	ändert einzelne Elemente aus einem vcf-Datensatz. Benötigt eins der folgenden Argumente:
-	mod   - Fügt eine neue Zeile zu einem bestehenden Datensatz hinzu oder ändert eine bestehende Zeile.
-	del   - Löscht eine bestimmte Zeile aus einem bestehenden Datensatz.
+	mod     - Fügt eine neue Zeile zu einem bestehenden Datensatz hinzu oder ändert eine bestehende Zeile.
+	del     - Löscht eine bestimmte Zeile aus einem bestehenden Datensatz.
 	Zeitstempel wird aktualisiert.
+
+	delmess - Löscht eine MessengerID aus Adressdatendatei.
 
    -n [argument]
 
 	nimmt einen neuen Datensatz in die Adressdatei auf.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
-	briar - Nimmt einen neuen Briar-Datensatz auf.
-	tox   - Nimmt einen neuen Tox-Datensatz auf.
-	vcf   - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
-	        Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
+	briar  - Nimmt einen neuen Briar-Datensatz auf.
+	jabber - Nimmt einen neuen Jabber-Datensatz auf.
+	tox    - Nimmt einen neuen Tox-Datensatz auf.
+	vcf    - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
+	         Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
 
    -r [argument]
 
@@ -356,7 +366,7 @@ adrprint1() {
     [ -n "$con_website_work" -o "$showlabel" == "yes" ] && printf 'Homepage             : %0s\n' "$con_website_work"
     [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
 
-    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$toxcontent" ]); then
+    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$toxcontent" ]); then
      let printcounter++
      echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
      [ "$showlabel" == "yes" ] && echo "MessengerIDs; etc."
@@ -399,10 +409,495 @@ checksum() {
 }
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:hl:m:n:r:swW opt
+while getopts cCdDe:E:hl:m:n:r:swW opt
 
 do 
  case $opt in
+
+  c) gcalcheck
+     gcal -K
+     echo ""
+     exit
+  ;;
+
+  C) gcalcheck
+     confcheck
+
+     if [ "$dateformat" == "DE" ]; then
+      dateformatcheck="yes"
+     else
+      echo "Keine gültige Länderkennung in config-Datei definiert."
+      exit 1
+     fi
+
+     ccontent() {
+      for cc in ${countrycodes[@]}; do
+       echo "$cc"
+      done | nl
+     }
+     ccontent
+
+     exdays() {
+      if [ -n "$excludedays" ]; then
+       for excd in "${excludedays[@]}"; do
+        callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
+        calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
+       done
+      fi
+     }
+
+     hlight() {
+      # Beschreibung der einzelnen sed-Befehle:
+      # 1. Im oberen Kalenderbereich werden aufeinanderfolgende, (gesetzliche) Feiertage eingefärbt (Zahlen: (einstellig) - zweistellig).
+      # 2. Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt.
+      # 3. Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen eingefärbt.
+      # 4. Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
+      # 5. Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
+      [ "$highlighting" == "yes" ] && calcontent="$(echo "$calcontent" | sed '
+                                                   / [+#] /!s/:\( *\)\([0-9:]*\):/ \\e\[0;31;1m\1\2\\e\[0m /g
+                                                   / [+#] /!s/<\( *[0-9]*\)>/ \\e\[30;47m\1\\e\[0m /
+                                                   / + /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
+                                                   / # /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31m\1 \2 \3\\e\[0m/
+                                                   s/\([0-9]\):/\1 /g
+                                                  ')"
+     }
+
+     while [ -z "$auswahl" ]; do
+      read -p "Bitte Ländercode auswählen: " land
+      auswahl="$(ccontent | grep "$land" | sed 's/^ *//' | cut -f2)"
+     done
+
+     if [ -n "$extholidays" ]; then
+
+      # Doppelte Tage werden rausgefiltert.
+      daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+      if [ "$highlighting" == "yes" ]; then
+       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" $(date +%Y))"
+       hlight
+      else
+       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" $(date +%Y))"
+      fi
+
+      # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
+      extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
+      [ -n "$extholidaysabbr" ] && while read -r oneday; do
+                                    calcontent="$(echo "$calcontent" | sed '
+                                                  /('"$extholidaysabbr"').*'"$oneday"'/d
+                                                ')"
+                                   done <<<"$daylist"
+
+      exdays
+      echo -e "$calcontent"
+
+     else
+
+      if [ "$highlighting" == "yes" ]; then
+       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list $(date +%Y))"
+       hlight
+      else
+       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list $(date +%Y))"
+      fi
+
+      exdays
+      echo -e "$calcontent"
+
+     fi
+     echo ""
+     exit
+  ;;
+
+  d) gcalcheck
+     datefilecheck
+     gcal -K -f "$datefile" -c .+
+     echo ""
+     exit
+  ;;
+
+  D) gcalcheck
+     datefilecheck
+     gcal :
+     gcal -K -f "$datefile" :
+     echo ""
+     exit
+  ;;
+
+  e) # Exportieren von Kalenderdaten
+     gcalcheck
+     confcheck
+
+     econtent() {
+      for ec in ${countrycodes[@]}; do
+       echo "$ec"
+      done | nl
+     }
+     exdays() {
+       if [ -n "$excludedays" ]; then
+        for excd in "${excludedays[@]}"; do
+         callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
+         calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
+        done
+       fi
+     }
+
+     if [ "$OPTARG" == "ics" ]; then
+
+      econtent
+      while [ -z "$eauswahl" ]; do
+       read -p "Bitte Ländercode auswählen: " eland
+       eauswahl="$(econtent | grep "$eland" | sed 's/^ *//' | cut -f2)"
+      done
+      while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
+       read -p "Bitte ein Jahr angeben (yyyy): " ejahr
+      done
+      if [ -n "$extholidays" ]; then
+       calcontent="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays" --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
+       # Doppelte Tage werden rausgefiltert.
+       daylist="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays"  "$ejahr" | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+       extholidaysabbr="$(gcal --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
+       [ -n "$extholidaysabbr" ] && while read -r oneday; do
+                                     calcontent="$(echo "$calcontent" | sed '
+                                                    /('"$extholidaysabbr"').*'"$oneday"'/d
+                                                 ')"
+                                    done <<<"$daylist"
+
+       # Aus config-Datei definierte Kalendereinträge werden gelöscht.
+       exdays
+
+      else
+
+       calcontent="$(gcal -u -K -q"$eauswahl" -H no --holiday-list --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
+       exdays
+
+      fi
+
+      # ** Erstellung der .ics-Datei **
+      calcontent="$(echo "$calcontent" | sed '
+                                              1,3d
+                                              s/ =.*$//
+                                              s/^\(.*\) ([^)]*) */\1@/1
+                                              s/ \([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)/@\1/
+                                             ')"
+
+      echo "BEGIN:VCALENDAR" >./"feiertage_${eauswahl,,}_${ejahr}.ics"
+      echo "VERSION:2.0" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
+      while read -r cline; do
+       echo "BEGIN:VEVENT"
+       echo "SUMMARY:$(echo "$cline" | cut -f1 -d@)"
+       echo "DTSTART;VALUE=DATE:$(echo "$cline" | cut -f3 -d@ | sed 's/-//g')"
+       tommorrowis="$(($(date -d "$(echo "$cline" | cut -f3 -d@)" +"%s") + 86400))"
+       echo "DTEND;VALUE=DATE:$(date -d @$tommorrowis +%Y%m%d)"
+       if [ "$(echo "$cline" | cut -f2 -d@)" == "+" ]; then
+        echo "DESCRIPTION:Feiertag"
+       fi
+       echo "END:VEVENT"
+      done <<<"$calcontent" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
+      echo "END:VCALENDAR" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
+      echo "Datei feiertage_${eauswahl,,}_${ejahr}.ics wurde erstellt und befindet sich im Ordner ${PWD}."
+
+     else
+
+      echo "${OPTARG} ist nicht definiert."
+
+     fi
+
+    exit
+  ;;
+
+  E) if [ "$OPTARG" == "vcf" ]; then
+      echo "Daten werden als vcf exportiert"
+      exportmodus="vcfformat"
+      read -p "Soll in [v]cf-Datei oder in [Q]R-Code exportiert werden? " vcfexport
+      while true; do
+        case "$vcfexport" in
+          v|V) vcftype="vcf"
+               read -p "Bitte Dateinamen der angeben (Suffix .vcf wird automatisch hinzugefügt): " vcffilename
+                  filesuffix="${vcffilename##*.}"
+                  if [ ! "$filesuffix" == "vcf" ]; then
+                   vcffilename+=".vcf"
+                  fi
+                  if [ -e ./"$vcffilename" ]; then
+                   echo "Datei existiert bereits."
+                   read -p "[u]eberschreiben oder [a]bbrechen? " delfileanswer
+                   while true; do
+                    case "$delfileanswer" in
+                      u|U|"") rm -f ./"$vcffilename"
+                       break
+                       ;;
+                      a|A) exit
+                       ;;
+                      *) echo "Fehlerhafte Eingabe!"
+                       ;;
+                    esac
+                   done
+                  fi
+           break
+           ;;
+          q|Q) vcftype="qr"
+           break
+           ;;
+          *) echo "Fehlerhafte Eingabe!"
+           ;;
+        esac
+      done
+     # Ausgabe auf der Standardasgabe des Terminals.
+     elif [ "$OPTARG" == "messid" ]; then
+      exportmodus="qrcode"
+     else
+      echo "Ungültige Option (${OPTARG}). Exportieren der Daten nicht möglich."
+      exit 1
+     fi
+
+     # Das shiften ist wichtig, damit die Namen später korrekt ausgewertet werden.
+     shift $(("$OPTIND"-1))
+  ;;
+
+  h) usage
+     exit
+  ;;
+
+  l) if [ "$OPTARG" == "file" ]; then
+      ccat ${pathofaddress}/address.lst.cpt
+     elif [ "$OPTARG" == "label" ]; then
+      showlabel="yes"
+      vcardcheck=1
+      onlylabel="$(adrprint1)"$'\n'
+      onlylabel+="$(adrprint2)"
+      labellist1="$(echo "$onlylabel" | sed '/:/s/^\(.\{21\}\).*/  \1/;/^MessengerIDs/s/^/  /;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */')"
+      echo "$labellist1"
+      echo ""
+     elif [ "$OPTARG" == "miss" ]; then
+      misslabel="yes"
+      showlabel="yes"
+      vcardcheck=1
+      onlylabel="$(adrprint1)"
+      onlylabel+="$(adrprint2)"
+      labellist1="$(echo "$onlylabel" | sed 's/^\(.*\) *:.*/\1/;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */;/^* Kontaktdaten sonstige/,$d')"
+      # Wichtig die Variablen hier zu löschen!
+      unset showlabel
+      unset vcardcheck
+      shift $(("$OPTIND"-1))
+      break
+     else
+      usage
+      echo "Ungültige Angabe"
+     fi
+     exit
+  ;;
+
+  m) if [ "$OPTARG" == "del" -o "$OPTARG" == "mod" ]; then
+
+       modifymodus="yes"
+
+       allmodtype=(geburtstag tel_fest_priv tel_mob_priv str_nr_priv geo_wohns_priv url_priv email1_priv email2_priv firma tel_fest_beruf tel_mobil_beruf str_nr_beruf geo_wohns_beruf url_beruf email1_beruf email2_beruf notiz sprache)
+       arraylist="$(echo "${allmodtype[@]}" | tr ' ' '\n' | sed '
+                                                                 s/_/ /g
+                                                                 s/\(\<.\)/\U\1/g
+                                                                 s/Str Nr Priv/Straße,Hausnummer,PLZ und Ort Priv/
+                                                                 s/Geo Wohns Priv/Geokoordinaten Wohnsitz Priv/
+                                                                 s/Str Nr Beruf/Straße,Hausnummer,PLZ und Ort Beruf/
+                                                                 s/Geo Wohns Beruf/Geokoordinaten Wohnsitz Beruf/
+                                                                 s/ Beruf/ berufl./g
+                                                                 s/\(Firma\)/\1, Abteilung und Berufsbezeichnung/
+                                                                 s/ Fest / Festnetz /g
+                                                                 s/ Mob / Mobil /g
+                                                                 s/ Priv/ Privat/g
+                                                                 s/Str /Straße /g
+                                                                 s/Tel /Telefon /1
+                                                                ' | nl)"
+       echo "$arraylist"
+       read -p "Bitte Nummer eingeben: " modanswer
+       modtype="${allmodtype[$(($modanswer-1))]}"
+
+     fi
+
+     if [ "$OPTARG" == "del" ]; then
+
+      modifytype="del"
+
+     elif [ "$OPTARG" == "mod" ]; then
+
+      modifytype="mod"
+      datenabfrage
+
+     elif [ "$OPTARG" == "delmess" ]; then
+
+      echo "Adressdatei wird gesichert ..."
+      cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+      ccdecrypt "${pathofaddress}/address.lst.cpt"
+      while [ ! "$?" == "0" ]; do
+        echo "Bitte Passwort erneut eingeben:"
+        ccdecrypt "${pathofaddress}/address.lst.cpt"
+      done
+
+      shift $(("$OPTIND"-1))
+      nachname="$1"
+      vorname="$2"
+
+      messidlist="$(sed -n '/^BEGIN:BRIAR\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
+
+      # Art der IDs und die Position (Zeilennummern) in Adressdatendatei wird in Liste geschrieben.
+      while read -r checkid; do
+       if [ -n "$(echo "$checkid" | grep '^[0-9]*:BEGIN:')" ]; then
+        kindofid="$(echo "$checkid" | grep '^[0-9]*:BEGIN:' | cut -f3 -d':')"
+       else
+        idlinenr="$(echo "$checkid" | cut -f1 -d':')"
+        messidlist="$(echo "$messidlist" | sed '/^'"$idlinenr"':/s/\(^[0-9]*:\)/\1'"$kindofid"':/')"
+       fi
+      done <<<"$messidlist"
+
+      # Liste wird gesäubert und nach Namen gefiltert.
+      if [ -n "$vorname" ]; then
+       messidlist="$(echo "$messidlist" | sed '/:BEGIN:\|:END:/d' | grep -i ':'"${nachname}"':'"${vorname}"':')"
+      elif [ -n "$nachname" ]; then
+       messidlist="$(echo "$messidlist" | sed '/:BEGIN:\|:END:/d' | grep -i ':'"${nachname}"':')"
+      else
+       echo "Es muss mindestens der Nachname angegeben werden. Vorgang wird abgebrochen."
+       exit 1
+      fi
+
+      # Ausgabe der Liste auf Bildschirm
+      echo ""
+      echo "$messidlist" | sed 's/[0-9]*://' | nl
+      echo ""
+
+      unset zeilennr
+      while [ -z "$zeilennr" ]; do
+       read -p "Welche MessengerID soll gelöscht werden. Bitte Nummer angeben: " delid
+       [ "$delid" -gt 0 ] && zeilennr="$(echo "$messidlist" | sed -n ''"$delid"'p' | grep -o '^[0-9]*')"
+      done
+
+      # Löschung der MessengerID-Zeile aus Adressdatendatei
+      echo "Zeile ${zeilennr} wird aus Adressdatendatei gelöscht ..."
+      sed -i "${zeilennr}d" "${pathofaddress}/address.lst"
+
+      echo "Datei wird wieder verschlüsselt ..."
+      ccencrypt "${pathofaddress}/address.lst"
+      while [ ! "$?" == "0" ]; do
+        echo "Bitte Passwort erneut eingeben:"
+        ccencrypt "${pathofaddress}/address.lst"
+      done
+
+      exit 0
+
+     else
+
+      usage
+      echo "Ungültige Option!"
+      exit 1
+
+     fi
+
+     shift $(("$OPTIND"-1))
+     break
+  ;;
+ 
+  n) newdata="yes"
+     if [ "$OPTARG" == "vcf" ]; then
+     
+      # Eingabe eines neuen .vcf-Datensatzes
+      datenabfrage
+         
+      # Bei leeren Einträgen wird das Gerüst aus .vcf-Datei gelöscht.
+      vcfcard="$(vcfvorlage)"
+      test -z "$fill_birthday" && vcfcard="$(echo "$vcfcard" | sed '/^BDAY:/d')"
+      test -z "$fill_tel_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,voice;/d')"
+      test -z "$fill_mob_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,cell;/d')"
+      test -z "$fill_strasse_home" -a -z "$fill_plz_home" -a -z "$fill_ort_home" -a -z "$fill_land_home"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=home;/d')"
+      test -z "$fill_lat_home" -o -z "$fill_lon_home" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=home/d')"
+      test -z "$fill_url_home" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=home/d')"
+      test -z "$fill_email_home1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=home:/d')"
+      test -z "$fill_email_home2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=home:/d')"
+      test -z "$fill_firma" -a -z "$fill_abteilung" -a -z "$fill_beruf" && vcfcard="$(echo "$vcfcard" | sed '/^ORG:/d')"
+      test -z "$fill_tel_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,voice;/d')"
+      test -z "$fill_mob_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,cell;/d')"
+      test -z "$fill_strasse_work" -a -z "$fill_plz_work" -a -z "$fill_ort_work" -a -z "$fill_land_work"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=work;/d')"
+      test -z "$fill_lat_work" -o -z "$fill_lon_work" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=work/d')"
+      test -z "$fill_url_work" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=work/d')"
+      test -z "$fill_email_work1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=work:/d')"
+      test -z "$fill_email_work2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=work:/d')"
+      test -z "$fill_note" && vcfcard="$(echo "$vcfcard" | sed '/^NOTE:/d')"
+      test -z "$fill_lang" && vcfcard="$(echo "$vcfcard" | sed '/^LANG:/d')"
+      # Unnütze Zeilenumbrüche (Label, Note etc.) werden entfernt.
+      vcfcard="$(echo "$vcfcard" | sed 's/"\\n/"/g;s/\\n"/"/g;s/\\n *"/"/g')"
+      # Zum debuggen
+      #echo "$vcfcard" && exit
+      
+     elif [ "$OPTARG" == "briar" ]; then
+     
+      read -p "Bitte Nachnamen eingeben: " briarnachname
+      read -p "Bitte Vornamen eingeben: " briarvorname
+      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " briaraccountname
+      read -p "Bitte BriarID eingeben (ohne Scheme; briar://): " briaridwithouts
+
+     elif [ "$OPTARG" == "jabber" ]; then
+
+      read -p "Bitte Nachnamen eingeben: " jidnachname
+      read -p "Bitte Vornamen eingeben: " jidvorname
+      read -p "Bitte User der JabberID eingeben: " jiduser
+      read -p "Bitte XMPP-Server eingeben: " jidserver
+
+     elif [ "$OPTARG" == "tox" ]; then
+     
+      read -p "Bitte Nachnamen eingeben: " toxnachname
+      read -p "Bitte Vornamen eingeben: " toxvorname
+      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " toxaccountname
+      read -p "Bitte ToxID eingeben (76 Zeichen): " newtoxid
+
+      while [ ! "$(printf "$newtoxid" | wc -m)" == "76" ]; do
+       echo "ToxID ist keine 76'Zeichen lang."
+       read -p "Bitte ToxID erneut eingeben (76 Zeichen): " newtoxid
+      done
+     
+     else
+      
+      usage
+      echo -e "Ungültiges Argument.\n"
+      exit 1
+      
+     fi
+     
+     echo "Adressdatei wird gesichert ..."
+     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+     ccdecrypt "${pathofaddress}/address.lst.cpt"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccdecrypt "${pathofaddress}/address.lst.cpt"
+     done
+     
+     if [ "$OPTARG" == "vcf" ]; then
+     
+      seiteteil1="$(sed -n '1,/^END:VCF/p' "${pathofaddress}/address.lst" | sed '$d')"
+      seiteteil2="$(sed -n '/^END:VCF/,$p' "${pathofaddress}/address.lst")"
+      echo "$seiteteil1" >"${pathofaddress}/address.lst"
+      echo "$vcfcard" >>"${pathofaddress}/address.lst"
+      echo "$seiteteil2" >>"${pathofaddress}/address.lst"
+      
+     elif [ "$OPTARG" == "briar" ]; then
+
+      briarnewline="$(echo "${briarnachname}:${briarvorname}:${briaraccountname}:${briaridwithouts}")"
+      sed -i 's/\(END:BRIAR\)/'"$briarnewline"'\n\1/' "${pathofaddress}/address.lst"
+
+     elif [ "$OPTARG" == "jabber" ]; then
+
+      jidnewline="$(echo "${jidnachname}:${jidvorname}:${jiduser}:${jidserver}")"
+      sed -i 's/\(END:XMPP\)/'"$jidnewline"'\n\1/' "${pathofaddress}/address.lst"
+
+     elif [ "$OPTARG" == "tox" ]; then
+
+      toxnewline="$(echo "${toxnachname}:${toxvorname}:${toxaccountname}:${newtoxid}")"
+      sed -i 's/\(END:TOX\)/'"$toxnewline"'\n\1/' "${pathofaddress}/address.lst"
+     
+     fi
+     
+     echo "Datei wird wieder verschlüsselt ..."
+     ccencrypt "${pathofaddress}/address.lst"
+     while [ ! "$?" == "0" ]; do
+       echo "Bitte Passwort erneut eingeben:"
+       ccencrypt "${pathofaddress}/address.lst"
+     done
+     
+     exit
+  ;;
 
   r) gcalcheck
      confcheck
@@ -546,172 +1041,6 @@ do
      # Wenn keine weiteren Argumente nach Option -s definiert sind, wird Skript beendet.
      [ -z "$*" ] && exit
   ;;
-  c) gcalcheck
-     gcal
-     echo ""
-     exit
-  ;;
-  C) gcalcheck
-     confcheck
-     ccontent() {
-      for cc in ${countrycodes[@]}; do
-       echo "$cc"
-      done | nl
-     }
-     ccontent
-     while [ -z "$auswahl" ]; do
-      read -p "Bitte Ländercode auswählen: " land
-      auswahl="$(ccontent | grep "$land" | sed 's/^ *//' | cut -f2)"
-     done
-     gcal -q${auswahl} --holiday-list $(date +%Y)
-     echo ""
-     exit
-  ;;
-  d) gcalcheck
-     datefilecheck
-     gcal -f "$datefile" -c .+
-     echo ""
-     exit
-  ;;
-  D) gcalcheck
-     datefilecheck
-     gcal :
-     gcal -f "$datefile" :
-     echo ""
-     exit
-  ;;
-  m) modifymodus="yes"
-  
-     allmodtype=(geburtstag tel_fest_priv tel_mob_priv str_nr_priv geo_wohns_priv url_priv email1_priv email2_priv firma tel_fest_beruf tel_mobil_beruf str_nr_beruf geo_wohns_beruf url_beruf email1_beruf email2_beruf notiz sprache)
-     arraylist="$(echo "${allmodtype[@]}" | tr ' ' '\n' | sed '
-                                                               s/_/ /g
-                                                               s/\(\<.\)/\U\1/g
-                                                               s/Str Nr Priv/Straße,Hausnummer,PLZ und Ort Priv/
-                                                               s/Geo Wohns Priv/Geokoordinaten Wohnsitz Priv/
-                                                               s/Str Nr Beruf/Straße,Hausnummer,PLZ und Ort Beruf/
-                                                               s/Geo Wohns Beruf/Geokoordinaten Wohnsitz Beruf/
-                                                               s/ Beruf/ berufl./g
-                                                               s/\(Firma\)/\1, Abteilung und Berufsbezeichnung/
-                                                               s/ Fest / Festnetz /g
-                                                               s/ Mob / Mobil /g
-                                                               s/ Priv/ Privat/g
-                                                               s/Str /Straße /g
-                                                               s/Tel /Telefon /1
-                                                              ' | nl)"
-     echo "$arraylist"
-     read -p "Bitte Nummer eingeben: " modanswer
-     modtype="${allmodtype[$(($modanswer-1))]}"
-  
-     if [ "$OPTARG" == "del" ]; then
-      modifytype="del"
-     elif [ "$OPTARG" == "mod" ]; then
-      modifytype="mod"
-      datenabfrage
-     else
-      usage
-      echo "Ungültige Option!"
-      exit 1
-     fi
-
-     shift $(("$OPTIND"-1))
-     break
-  ;;
- 
-  n) newdata="yes"
-     if [ "$OPTARG" == "vcf" ]; then
-     
-      # Eingabe eines neuen .vcf-Datensatzes
-      datenabfrage
-         
-      # Bei leeren Einträgen wird das Gerüst aus .vcf-Datei gelöscht.
-      vcfcard="$(vcfvorlage)"
-      test -z "$fill_birthday" && vcfcard="$(echo "$vcfcard" | sed '/^BDAY:/d')"
-      test -z "$fill_tel_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,voice;/d')"
-      test -z "$fill_mob_home" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=home,cell;/d')"
-      test -z "$fill_strasse_home" -a -z "$fill_plz_home" -a -z "$fill_ort_home" -a -z "$fill_land_home"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=home;/d')"
-      test -z "$fill_lat_home" -o -z "$fill_lon_home" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=home/d')"
-      test -z "$fill_url_home" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=home/d')"
-      test -z "$fill_email_home1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=home:/d')"
-      test -z "$fill_email_home2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=home:/d')"
-      test -z "$fill_firma" -a -z "$fill_abteilung" -a -z "$fill_beruf" && vcfcard="$(echo "$vcfcard" | sed '/^ORG:/d')"
-      test -z "$fill_tel_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,voice;/d')"
-      test -z "$fill_mob_work" && vcfcard="$(echo "$vcfcard" | sed '/^TEL;TYPE=work,cell;/d')"
-      test -z "$fill_strasse_work" -a -z "$fill_plz_work" -a -z "$fill_ort_work" -a -z "$fill_land_work"  && vcfcard="$(echo "$vcfcard" | sed '/^ADR;TYPE=work;/d')"
-      test -z "$fill_lat_work" -o -z "$fill_lon_work" && vcfcard="$(echo "$vcfcard" | sed '/^GEO;TYPE=work/d')"
-      test -z "$fill_url_work" && vcfcard="$(echo "$vcfcard" | sed '/^URL;TYPE=work/d')"
-      test -z "$fill_email_work1" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;PREF=1;TYPE=work:/d')"
-      test -z "$fill_email_work2" && vcfcard="$(echo "$vcfcard" | sed '/^EMAIL;TYPE=work:/d')"
-      test -z "$fill_note" && vcfcard="$(echo "$vcfcard" | sed '/^NOTE:/d')"
-      test -z "$fill_lang" && vcfcard="$(echo "$vcfcard" | sed '/^LANG:/d')"
-      # Unnütze Zeilenumbrüche (Label, Note etc.) werden entfernt.
-      vcfcard="$(echo "$vcfcard" | sed 's/"\\n/"/g;s/\\n"/"/g;s/\\n *"/"/g')"
-      # Zum debuggen
-      #echo "$vcfcard" && exit
-      
-     elif [ "$OPTARG" == "briar" ]; then
-     
-      read -p "Bitte Nachnamen eingeben: " briarnachname
-      read -p "Bitte Vornamen eingeben: " briarvorname
-      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " briaraccountname
-      read -p "Bitte BriarID eingeben (ohne Scheme; briar://): " briaridwithouts
-      
-     elif [ "$OPTARG" == "tox" ]; then
-     
-      read -p "Bitte Nachnamen eingeben: " toxnachname
-      read -p "Bitte Vornamen eingeben: " toxvorname
-      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " toxaccountname
-      read -p "Bitte ToxID eingeben (76 Zeichen): " newtoxid
-
-      while [ ! "$(printf "$newtoxid" | wc -m)" == "76" ]; do
-       echo "ToxID ist keine 76'Zeichen lang."
-       read -p "Bitte ToxID erneut eingeben (76 Zeichen): " newtoxid
-      done
-     
-     else
-      
-      usage
-      echo -e "Ungültiges Argument.\n"
-      exit 1
-      
-     fi
-     
-     echo "Adressdatei wird gesichert ..."
-     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
-     ccdecrypt "${pathofaddress}/address.lst.cpt"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccdecrypt "${pathofaddress}/address.lst.cpt"
-     done
-     
-     if [ "$OPTARG" == "vcf" ]; then
-     
-      seiteteil1="$(sed -n '1,/^END:VCF/p' "${pathofaddress}/address.lst" | sed '$d')"
-      seiteteil2="$(sed -n '/^END:VCF/,$p' "${pathofaddress}/address.lst")"
-      echo "$seiteteil1" >"${pathofaddress}/address.lst"
-      echo "$vcfcard" >>"${pathofaddress}/address.lst"
-      echo "$seiteteil2" >>"${pathofaddress}/address.lst"
-      
-     elif [ "$OPTARG" == "briar" ]; then
-
-      briarnewline="$(echo "${briarnachname}:${briarvorname}:${briaraccountname}:${briaridwithouts}")"
-      sed -i 's/\(END:BRIAR\)/'"$briarnewline"'\n\1/' "${pathofaddress}/address.lst"
-
-     elif [ "$OPTARG" == "tox" ]; then
-
-      toxnewline="$(echo "${toxnachname}:${toxvorname}:${toxaccountname}:${newtoxid}")"
-      sed -i 's/\(END:TOX\)/'"$toxnewline"'\n\1/' "${pathofaddress}/address.lst"
-     
-     fi
-     
-     echo "Datei wird wieder verschlüsselt ..."
-     ccencrypt "${pathofaddress}/address.lst"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccencrypt "${pathofaddress}/address.lst"
-     done
-     
-     exit
-  ;;
 
   w) gcalcheck
      datefilecheck
@@ -739,88 +1068,7 @@ do
      done
      exit
   ;;
-  
-  h) usage
-     exit
-  ;;
-  
-  l) if [ "$OPTARG" == "file" ]; then
-      ccat ${pathofaddress}/address.lst.cpt
-     elif [ "$OPTARG" == "label" ]; then
-      showlabel="yes"
-      vcardcheck=1
-      onlylabel="$(adrprint1)"$'\n'
-      onlylabel+="$(adrprint2)"
-      labellist1="$(echo "$onlylabel" | sed '/:/s/^\(.\{21\}\).*/  \1/;/^MessengerIDs/s/^/  /;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */')"
-      echo "$labellist1"
-      echo ""
-     elif [ "$OPTARG" == "miss" ]; then
-      misslabel="yes"
-      showlabel="yes"
-      vcardcheck=1
-      onlylabel="$(adrprint1)"
-      onlylabel+="$(adrprint2)"
-      labellist1="$(echo "$onlylabel" | sed 's/^\(.*\) *:.*/\1/;s/^[[:digit:]]*\.[[:digit:]]* \(.*$\)/* \1 */;/^* Kontaktdaten sonstige/,$d')"
-      # Wichtig die Variablen hier zu löschen!
-      unset showlabel
-      unset vcardcheck
-      shift $(("$OPTIND"-1))
-      break
-     else
-      usage
-      echo "Ungültige Angabe"
-     fi
-     exit
-  ;;
-  
-  e) if [ "$OPTARG" == "vcf" ]; then
-      echo "Daten werden als vcf exportiert"
-      exportmodus="vcfformat"
-      read -p "Soll in [v]cf-Datei oder in [Q]R-Code exportiert werden? " vcfexport
-      while true; do
-        case "$vcfexport" in
-          v|V) vcftype="vcf"
-               read -p "Bitte Dateinamen der angeben (Suffix .vcf wird automatisch hinzugefügt): " vcffilename
-                  filesuffix="${vcffilename##*.}"
-                  if [ ! "$filesuffix" == "vcf" ]; then
-                   vcffilename+=".vcf"
-                  fi
-                  if [ -e ./"$vcffilename" ]; then
-                   echo "Datei existiert bereits."
-                   read -p "[u]eberschreiben oder [a]bbrechen? " delfileanswer
-                   while true; do
-                    case "$delfileanswer" in
-                      u|U|"") rm -f ./"$vcffilename"
-                       break
-                       ;;
-                      a|A) exit
-                       ;;
-                      *) echo "Fehlerhafte Eingabe!"
-                       ;;
-                    esac
-                   done
-                  fi
-           break
-           ;;
-          q|Q) vcftype="qr"
-           break
-           ;;
-          *) echo "Fehlerhafte Eingabe!"
-           ;;
-        esac
-      done  
-     # Ausgabe auf der Standardasgabe des Terminals.
-     elif [ "$OPTARG" == "messid" ]; then
-      exportmodus="qrcode"
-     else
-      echo "Ungültige Option (${OPTARG}). Exportieren der Daten nicht möglich."
-      exit 1
-     fi
-     
-     # Das shiften ist wichtig, damit die Namen später korrekt ausgewertet werden.
-     shift $(("$OPTIND"-1))
-  ;;
-  
+
   ?) exit 1
   ;;
   
@@ -878,7 +1126,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    
   # Der ggf. ermittelte Vorname wird über die vcard ermittelt.
   # Es muss nämlich in der Adressenliste immer eine vcard angelegt werden, auch wenn z.B. nur eine Briar-Adresse vorhanden ist.
-  # Achtung: Ansonsten werden Briar-/Tox-Adressen nicht mit ausgewertet!
+  # Achtung: Ansonsten werden Briar-/Jabber-/Tox-Adressen nicht mit ausgewertet!
   #          Außerdem sollten alle grep-Befehle mit -i ausgeführt werden (ignoriert Groß/Kleinschreibung):
   if [ "$1" == "*" ]; then
    vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:')"
@@ -891,13 +1139,14 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    vorname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f2 -d';')"
   fi
   
-  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Toxadressen gesucht.
+  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Jabber-/Toxadressen gesucht.
   if [ -n "$vcfsinglecontentline" ]; then
   
    let vcardcheck++
    
    # Variablen werden definiert
    briarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+   jabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    toxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
 
    adr_home_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=home;')"
@@ -988,7 +1237,29 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
       fi
      done
     fi
-   
+
+    # *** JabberIDs werden verarbeitet ***
+    if [ -n "$jabbercontent" ]; then
+     anzjid="$(echo "$jabbercontent" | wc -l)"
+     for jid in $(seq 1 "$anzjid"); do
+      jabline="$(echo "$jabbercontent" | sed -n ''${jid}'p')"
+      jabuser="$(echo "$jabline" | cut -d':' -f3)"
+      jabservername="$(echo "$jabline" | cut -d':' -f4)"
+      echo "JabberID ${jid}           : ${jabuser}@${jabservername} (${jabservername})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nJabberID ('"$jabservername"'): '"${jabuser}"'@'"${jabservername}"'/')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:JabberID ('"$jabservername"'): '"${jabuser}"'@'"${jabservername}"'\n\1/')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       let messcounter++
+       jabdid="$(echo "$jabline" | cut -d':' -f3,4 | sed 's/:/@/')"
+       messprint+="${messcounter};${jabdid};Jabber;${jabservername};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+
     # *** ToxIDs werden verarbeitet ***
     if [ -n "$toxcontent" ]; then
      anztoxid="$(echo "$toxcontent" | wc -l)"
@@ -1466,9 +1737,10 @@ if [ "$vcardcheck" == "0" ]; then
   echo "Es konnte keine Vcard mit dem Namen ${*} ermittelt werden."
   
   checkbriarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -ci '^'"$nachname"':')"
+  checkjabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -ci '^'"$nachname"':')"
   checktoxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -ci '^'"$nachname"':')"
-  if [ "$checkbriarcontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
-   echo "Es wurden ${checkbriarcontent} BriarIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
+  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
+   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
    echo "Bitte erst einen passenden VCARD-Datensatz erstellen mit $0 -n vcf"
   fi
   

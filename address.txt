@@ -13,6 +13,12 @@ END:VCF
 BEGIN:BRIAR
 END:BRIAR
 
+# JabberIDs
+# Beispiel: User:XmppServer
+# Neue Adressen können mit der Option -n jabber aufgenommen werden (siehe auch address -h).
+BEGIN:XMPP
+END:XMPP
+
 # ToxIDs
 # Beispiel: Nachname:Vorname:Accountname:76stellige_ToxID
 # Neue Adressen können mit der Option -n tox aufgenommen werden (siehe auch address -h).
