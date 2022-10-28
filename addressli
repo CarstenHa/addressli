@@ -823,24 +823,48 @@ do
       #echo "$vcfcard" && exit
       
      elif [ "$OPTARG" == "briar" ]; then
-     
-      read -p "Bitte Nachnamen eingeben: " briarnachname
-      read -p "Bitte Vornamen eingeben: " briarvorname
+
+      while [ -z "$briarnachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " briarnachname
+      done
+      while [ -z "$briarvorname" ]; do
+       read -p "Bitte Vornamen eingeben: " briarvorname
+      done
       read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " briaraccountname
-      read -p "Bitte BriarID eingeben (ohne Scheme; briar://): " briaridwithouts
+      while [ -n "$(echo "$briaraccountname" | egrep -o '[:;]*')" ]; do
+       read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " briaraccountname
+      done
+      while [ -z "$briaridwithouts" ]; do
+       read -p "Bitte BriarID eingeben (ohne Scheme; briar://): " briaridwithouts
+      done
 
      elif [ "$OPTARG" == "jabber" ]; then
 
-      read -p "Bitte Nachnamen eingeben: " jidnachname
-      read -p "Bitte Vornamen eingeben: " jidvorname
-      read -p "Bitte User der JabberID eingeben: " jiduser
-      read -p "Bitte XMPP-Server eingeben: " jidserver
+      while [ -z "$jidnachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " jidnachname
+      done
+      while [ -z "$jidvorname" ]; do
+       read -p "Bitte Vornamen eingeben: " jidvorname
+      done
+      while [ -z "$jiduser" ]; do
+       read -p "Bitte User der JabberID eingeben: " jiduser
+      done
+      while [ -z "$jidserver" ]; do
+       read -p "Bitte XMPP-Server eingeben: " jidserver
+      done
 
      elif [ "$OPTARG" == "tox" ]; then
-     
-      read -p "Bitte Nachnamen eingeben: " toxnachname
-      read -p "Bitte Vornamen eingeben: " toxvorname
+
+      while [ -z "$toxnachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " toxnachname
+      done
+      while [ -z "$toxvorname" ]; do
+       read -p "Bitte Vornamen eingeben: " toxvorname
+      done
       read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " toxaccountname
+      while [ -n "$(echo "$toxaccountname" | egrep -o '[:;]*')" ]; do
+       read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " toxaccountname
+      done
       read -p "Bitte ToxID eingeben (76 Zeichen): " newtoxid
 
       while [ ! "$(printf "$newtoxid" | wc -m)" == "76" ]; do
