@@ -76,9 +76,10 @@ Options:
 	Weitere Informationen findet man auch unter:
 	https://www.gnu.org/software/gcal/manual/gcal.html
 
-   -D
+   -D <yyyy>
 
 	listet die Termine für die kommenden 12 Monate auf.
+	Bei optionaler Angabe einer Jahreszahl werden die Termine des angegebenen Jahres angezeigt.
 
    -e [argument] [yyyy]
 
@@ -517,8 +518,17 @@ do
 
   D) gcalcheck
      datefilecheck
-     gcal :
-     gcal -K -f "$datefile" :
+     shift $(("$OPTIND"-1))
+     ejahr=$1
+     if [ -n "$ejahr" ]; then
+      while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
+       read -p "Bitte eine gültige Jahreszahl angeben (yyyy): " ejahr
+      done
+      gcal -K -f "$datefile" "$ejahr"
+     else
+      gcal :
+      gcal -K -f "$datefile" :
+     fi
      echo ""
      exit
   ;;
