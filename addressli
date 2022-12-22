@@ -80,12 +80,15 @@ Options:
 
 	listet die Termine für die kommenden 12 Monate auf.
 
-   -e [argument]
+   -e [argument] [yyyy]
 
-	exportiert die Feiertage eines angegeben Jahres in eine .ics-Datei.
-	Benötigt eine weitere Angabe in Form eines Formats. Folgende Formate können angegeben werden:
+	exportiert die Feiertage und/oder Termine eines angegeben Jahres in eine .ics-Datei.
+	Benötigt weitere Angaben in Form eines Formats und einer Jahreszahl.
+	Folgende Formate können angegeben werden:
 
-	ics     - Exportiert Kalenderdaten in das .ics-Dateiformat.
+	ics     - Exportiert Feiertage und Termine eines angegebenen Kalenderjahres in das .ics-Dateiformat.
+	ics:h   - Exportiert nur die Feiertage eines angegebenen Kalenderjahres in das .ics-Dateiformat.
+	ics:d   - Exportiert nur die Termine eines angegebenen Kalenderjahres in das .ics-Dateiformat.
 
    -E [argument] [name]
 
@@ -104,12 +107,12 @@ Options:
    -l miss [name]
 
 	listet verschiedene Dinge auf. Beonötigt ein weiteres Argument.
-	file  - listet die Adressdatei auf.
-	label - listet die Label der eingebundenen Felder einer Adressdatei auf (Anschrift, PLZ, usw.). 
-	miss  - listet die Felder EINES Datensatzes auf, die noch nicht mit Inhalt belegt sind.
-	        (Notizen und Kontaktdaten sonstige (MessengerIDs) ausgenommen.)
-	        Benötigt mindestens den Nachnamen.
-	        Angabe des Vornamens ist optional, wenn nur ein Datensatz existiert.
+	file    - listet die Adressdatei auf.
+	label   - listet die Label der eingebundenen Felder einer Adressdatei auf (Anschrift, PLZ, usw.). 
+	miss    - listet die Felder EINES Datensatzes auf, die noch nicht mit Inhalt belegt sind.
+	          (Notizen und Kontaktdaten sonstige (MessengerIDs) ausgenommen.)
+	          Benötigt mindestens den Nachnamen.
+	          Angabe des Vornamens ist optional, wenn nur ein Datensatz existiert.
 
    -m [argument] [nachname] [evtl. vorname]
 
@@ -124,20 +127,19 @@ Options:
 
 	nimmt einen neuen Datensatz in die Adressdatei auf.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
-	briar  - Nimmt einen neuen Briar-Datensatz auf.
-	jabber - Nimmt einen neuen Jabber-Datensatz auf.
-	tox    - Nimmt einen neuen Tox-Datensatz auf.
-	vcf    - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
-	         Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
+	briar   - Nimmt einen neuen Briar-Datensatz auf.
+	jabber  - Nimmt einen neuen Jabber-Datensatz auf.
+	tox     - Nimmt einen neuen Tox-Datensatz auf.
+	vcf     - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
+	          Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
 
    -r [argument]
 
 	Termine des aktuellen Tages an unterschiedliche Dienste übergeben.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
-	mail   - Termine an eine E-Mail Adresse senden.
-	         Es muss ein SMTP-Client wie zum Beispiel msmtp installiert sein.
-	notify - Termine als Benachrichtigung mit notify-send auf dem Desktop
-	         ausgeben.
+	mail    - Termine an eine E-Mail Adresse senden.
+	          Es muss ein SMTP-Client wie zum Beispiel msmtp installiert sein.
+	notify  - Termine als Benachrichtigung mit notify-send auf dem Desktop ausgeben.
 	Für diese Option muss die Datei addressli.conf konfiguriert sein.
 
    -s
@@ -521,82 +523,162 @@ do
      exit
   ;;
 
-  e) # Exportieren von Kalenderdaten
-     gcalcheck
-     confcheck
+  e) expformat="$OPTARG"
 
-     econtent() {
-      for ec in ${countrycodes[@]}; do
-       echo "$ec"
-      done | nl
-     }
-     exdays() {
-       if [ -n "$excludedays" ]; then
-        for excd in "${excludedays[@]}"; do
-         callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
-         calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
-        done
-       fi
-     }
+     # ***** Exportieren von Kalender- und Termindaten *****
+     if [ "$expformat" == "ics:h" -o "$expformat" == "ics:d" -o "$expformat" == "ics" ]; then
 
-     if [ "$OPTARG" == "ics" ]; then
+      gcalcheck
+      confcheck
 
-      econtent
-      while [ -z "$eauswahl" ]; do
-       read -p "Bitte Ländercode auswählen: " eland
-       eauswahl="$(econtent | grep "$eland" | sed 's/^ *//' | cut -f2)"
-      done
+      shift $(("$OPTIND"-1))
+      ejahr=$1
       while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
        read -p "Bitte ein Jahr angeben (yyyy): " ejahr
       done
-      if [ -n "$extholidays" ]; then
-       calcontent="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays" --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
-       # Doppelte Tage werden rausgefiltert.
-       daylist="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays"  "$ejahr" | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
-       extholidaysabbr="$(gcal --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
-       [ -n "$extholidaysabbr" ] && while read -r oneday; do
-                                     calcontent="$(echo "$calcontent" | sed '
-                                                    /('"$extholidaysabbr"').*'"$oneday"'/d
-                                                 ')"
-                                    done <<<"$daylist"
 
-       # Aus config-Datei definierte Kalendereinträge werden gelöscht.
-       exdays
+      # *** Termindaten ***
+      if [ "$expformat" == "ics:d" -o "$expformat" == "ics" ]; then
 
-      else
+       datefilecheck
+       calcontent="$(gcal -K -u -f "$datefile" --date-format="%>04*Y-%>02*M-%1%>02*D%2" --highlighting=no "$ejahr" | sed '1,3d')"
 
-       calcontent="$(gcal -u -K -q"$eauswahl" -H no --holiday-list --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
-       exdays
+       icscontent="$(
+                     while read -r cline; do
+
+                      unset startzeit
+                      unset endezeit
+                      datedat="$(echo "$cline" | sed -n 's/^\([0-9]\{4\}\)-\([0-9]\{2\}\)-\([0-9]\{2\}\).*/\1\2\3/p')"
+
+                      # Uhrzeit analysieren
+                      uhrzeit="$(echo "$cline" | egrep -o '[0-9]{2}:[0-9]{2}')"
+                      anzzeiten="$(echo "$uhrzeit" | sed '/^$/d' | wc -l)"
+                      if [ "$anzzeiten" -le 2 -a "$anzzeiten" != 0 ]; then
+                       startzeit="$(echo "$uhrzeit" | sed -n '1p' | sed 's/://')"$'00'
+                       endezeit="$(echo "$uhrzeit" | sed -n '2p' | sed 's/://')"$'00'
+                       [ -z "$endezeit" ] && endezeit="$startzeit"
+                       if [ "$endezeit" -gt 240000 -o "$startzeit" -gt 240000 ]; then
+                        echo "Ungültiges Uhrzeitformat: ${cline}"
+                        exit 1
+                       fi
+                      elif [ "$anzzeiten" -gt 2 ]; then
+                       echo "Uhrzeit konnte nicht eindeutig ermittelt werden."
+                      fi
+
+                      # Folgende Variable wird benötigt für:
+                      # Enddatum eines ganztägigen Termins oder eine Zeit, die um 24:00 endet.
+                      tommorrowis="$(($(date -d "$datedat" +"%s") + 86400))"
+                      echo "BEGIN:VEVENT"
+                      # Beschreibung des Termins
+                      echo "SUMMARY:$(echo "$cline" | sed -n 's/^[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}: \(.*\)/\1/p')"
+
+                      # Wenn Uhrzeit ermittelt wurde, werden diese eingetragen,
+                      # ansonsten ganztägiger Termin
+                      if [ -n "$startzeit" -a -n "$endezeit" ]; then
+                       echo "DTSTART:${datedat}T${startzeit}"
+                       if [ "$endezeit" == 240000 ]; then
+                        echo "DTEND:$(date -d @$tommorrowis +%Y%m%d)T000000"
+                       else
+                        echo "DTEND:${datedat}T${endezeit}"
+                       fi
+                      else
+                       echo "DTSTART;VALUE=DATE:${datedat}"
+                       echo "DTEND;VALUE=DATE:$(date -d @$tommorrowis +%Y%m%d)"
+                      fi
+                      echo "END:VEVENT"
+
+                     done <<<"$calcontent"
+                    )"
 
       fi
 
-      # ** Erstellung der .ics-Datei **
-      calcontent="$(echo "$calcontent" | sed '
-                                              1,3d
-                                              s/ =.*$//
-                                              s/^\(.*\) ([^)]*) */\1@/1
-                                              s/ \([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)/@\1/
-                                             ')"
+      # *** Kalenderdaten ***
+      if [ "$expformat" == "ics:h" -o "$expformat" == "ics" ]; then
 
-      echo "BEGIN:VCALENDAR" >./"feiertage_${eauswahl,,}_${ejahr}.ics"
-      echo "VERSION:2.0" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
-      while read -r cline; do
-       echo "BEGIN:VEVENT"
-       echo "SUMMARY:$(echo "$cline" | cut -f1 -d@)"
-       echo "DTSTART;VALUE=DATE:$(echo "$cline" | cut -f3 -d@ | sed 's/-//g')"
-       tommorrowis="$(($(date -d "$(echo "$cline" | cut -f3 -d@)" +"%s") + 86400))"
-       echo "DTEND;VALUE=DATE:$(date -d @$tommorrowis +%Y%m%d)"
-       if [ "$(echo "$cline" | cut -f2 -d@)" == "+" ]; then
-        echo "DESCRIPTION:Feiertag"
+       econtent() {
+        for ec in ${countrycodes[@]}; do
+         echo "$ec"
+        done | nl
+       }
+       exdays() {
+         if [ -n "$excludedays" ]; then
+          for excd in "${excludedays[@]}"; do
+           callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
+           calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
+          done
+         fi
+       }
+
+       econtent
+       while [ -z "$eauswahl" ]; do
+        read -p "Bitte Ländercode auswählen: " eland
+        eauswahl="$(econtent | grep "$eland" | sed 's/^ *//' | cut -f2)"
+       done
+       if [ -n "$extholidays" ]; then
+
+        calcontent="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays" --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
+        # Doppelte Tage werden rausgefiltert.
+        daylist="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays"  "$ejahr" | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+        extholidaysabbr="$(gcal --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
+        [ -n "$extholidaysabbr" ] && while read -r oneday; do
+                                      calcontent="$(echo "$calcontent" | sed '
+                                                     /('"$extholidaysabbr"').*'"$oneday"'/d
+                                                  ')"
+                                     done <<<"$daylist"
+
+        # Aus config-Datei definierte Kalendereinträge werden gelöscht.
+        exdays
+
+       else
+
+        calcontent="$(gcal -u -K -q"$eauswahl" -H no --holiday-list --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
+        exdays
+
        fi
-       echo "END:VEVENT"
-      done <<<"$calcontent" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
-      echo "END:VCALENDAR" >>./"feiertage_${eauswahl,,}_${ejahr}.ics"
-      echo "Datei feiertage_${eauswahl,,}_${ejahr}.ics wurde erstellt und befindet sich im Ordner ${PWD}."
+
+       calcontent="$(echo "$calcontent" | sed '
+                                               1,3d
+                                               s/ =.*$//
+                                               s/^\(.*\) ([^)]*) */\1@/1
+                                               s/ \([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\)/@\1/
+                                              ')"
+
+       icscontent2="$(while read -r cline; do
+                      echo "BEGIN:VEVENT"
+                      echo "SUMMARY:$(echo "$cline" | cut -f1 -d@)"
+                      echo "DTSTART;VALUE=DATE:$(echo "$cline" | cut -f3 -d@ | sed 's/-//g')"
+                      tommorrowis="$(($(date -d "$(echo "$cline" | cut -f3 -d@)" +"%s") + 86400))"
+                      echo "DTEND;VALUE=DATE:$(date -d @$tommorrowis +%Y%m%d)"
+                      if [ "$(echo "$cline" | cut -f2 -d@)" == "+" ]; then
+                       echo "DESCRIPTION:Feiertag"
+                      fi
+                      echo "END:VEVENT"
+                     done <<<"$calcontent"
+                    )"
+
+      fi
+
+      # Dateinamen werden definiert
+      if [ "$expformat" == "ics:h" ]; then
+       expfilename="feiertage_${eauswahl,,}_${ejahr}.ics"
+      elif [ "$expformat" == "ics:d" ]; then
+       expfilename="termine_${ejahr}.ics"
+      elif [ "$expformat" == "ics" ]; then
+       expfilename="feiertage_${eauswahl,,}_und_termine_${ejahr}.ics"
+      fi
+
+      # *** Erstellung der .ics-Datei ***
+      echo "BEGIN:VCALENDAR" >./"$expfilename"
+      echo "VERSION:2.0" >>./"$expfilename"
+      [ -n "$icscontent" ] && echo "$icscontent" >>./"$expfilename"
+      [ -n "$icscontent2" ] && echo "$icscontent2" >>./"$expfilename"
+      echo "END:VCALENDAR" >>./"$expfilename"
+      echo "Datei ${expfilename} wurde erstellt und befindet sich im Ordner ${PWD}."
 
      else
 
-      echo "${OPTARG} ist nicht definiert."
+      echo "${expformat} ist nicht definiert."
+      exit 1
 
      fi
 
