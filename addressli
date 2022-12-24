@@ -552,6 +552,7 @@ do
 
        datefilecheck
        calcontent="$(gcal -K -u -f "$datefile" --date-format="%>04*Y-%>02*M-%1%>02*D%2" --highlighting=no "$ejahr" | sed '1,3d')"
+       tmptimefile=$(mktemp)
 
        icscontent="$(
                      while read -r cline; do
@@ -561,18 +562,16 @@ do
                       datedat="$(echo "$cline" | sed -n 's/^\([0-9]\{4\}\)-\([0-9]\{2\}\)-\([0-9]\{2\}\).*/\1\2\3/p')"
 
                       # Uhrzeit analysieren
-                      uhrzeit="$(echo "$cline" | egrep -o '[0-9]{2}:[0-9]{2}')"
+                      uhrzeit="$(echo "$cline" | egrep -o '[0-9]{2}:[0-9]{2}' | sort -n)"
                       anzzeiten="$(echo "$uhrzeit" | sed '/^$/d' | wc -l)"
-                      if [ "$anzzeiten" -le 2 -a "$anzzeiten" != 0 ]; then
+                      if [ "$anzzeiten" != 0 ]; then
                        startzeit="$(echo "$uhrzeit" | sed -n '1p' | sed 's/://')"$'00'
-                       endezeit="$(echo "$uhrzeit" | sed -n '2p' | sed 's/://')"$'00'
-                       [ -z "$endezeit" ] && endezeit="$startzeit"
+                       endezeit="$(echo "$uhrzeit" | sed -n '$p' | sed 's/://')"$'00'
+                       [ "$anzzeiten" -gt 2 ] && echo "$cline" >>"$tmptimefile"
                        if [ "$endezeit" -gt 240000 -o "$startzeit" -gt 240000 ]; then
                         echo "Ungültiges Uhrzeitformat: ${cline}"
                         exit 1
                        fi
-                      elif [ "$anzzeiten" -gt 2 ]; then
-                       echo "Uhrzeit konnte nicht eindeutig ermittelt werden."
                       fi
 
                       # Folgende Variable wird benötigt für:
@@ -599,6 +598,13 @@ do
 
                      done <<<"$calcontent"
                     )"
+
+       if [ "$(stat --format=%s "$tmptimefile")" != 0 ]; then
+        echo "Hinweis: Folgende Zeilen haben mehrere Zeitangaben:"
+        cat "$tmptimefile"
+        echo -e "Es werden die frühesten/spätesten Angaben verwendet.\n"
+       fi
+       rm -f "$tmptimefile"
 
       fi
 
