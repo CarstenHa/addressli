@@ -6,8 +6,8 @@
 ; Ein fester Termin
 20220602 Ein Termin am 02.06.2022
 ; Ein fester Termin mit Uhrzeit
-; Wenn ein oder zwei Uhrzeiten im Format HH:MM in der Terminbeschreibung angegeben werden, werden diese beim Export
-; in das .ics-Format berücksichtigt.
+; Wenn Uhrzeiten im Format HH:MM in der Terminbeschreibung angegeben werden,
+; werden die früheste und die späteste Uhrzeit beim Export in das .ics-Format berücksichtigt.
 20220603 Ein Termin am 03.06.2022 von 10:00 Uhr - 11:00 Uhr
 ; Immer wiederkehrendes Ereignis (z.B. Geburtstag)
 00000501 Geburtstag
