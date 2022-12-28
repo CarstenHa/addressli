@@ -1033,19 +1033,42 @@ do
       gcalcontent="$(gcal --highlighting=no -f "$datefile" -c)"
       # Wenn keine Termine vorliegen, ist gcalcontent leer und sendet dann nix.
       if [ -n "$gcalcontent" ]; then
+
        mailcounter=0
        while [ "$mailcounter" -lt 5 -a "$mailexit" != 0 ]; do
-        echo "$gcalcontent" | mail -a "Content-Type: text/plain; charset=UTF-8" -s "$mailsubject" "$mailaddr"
-        mailexit="$?"
-        let mailcounter++
-        if [ "$mailexit" == 0 ]; then
-         echo "${0}: E-mail zugestellt am `date +%d.%m.%Y` um `date +%H:%M` Uhr." | tee >(logger --id=$$)
-         break
-        fi
-        sleep 30
+
+         if [ -n "$keyfingerprint" ]; then
+
+           if [ -z "$(type -p gpg2)" ]; then
+            logger -s --id=$$ "Programm gnupg2 ist nicht installiert. Bitte erst installieren. Skript wird abgebrochen."
+           exit 1
+           fi
+           if [ "$(gpg2 --fingerprint "$keyfingerprint" &>/dev/null; echo $?)" != 0 ]; then
+            logger -s --id=$$ "Kein gültigen öffentlichen GPG-Schlüssel gefunden. Skript wird abgebrochen."
+            exit 1
+           fi
+           echo "$gcalcontent" | gpg2 --encrypt -a --recipient "$keyfingerprint" | mail -a "Content-Type: text/plain; charset=UTF-8" -s "$mailsubject" "$mailaddr"
+           mailexit="$?"
+
+         else
+
+           echo "$gcalcontent" | mail -a "Content-Type: text/plain; charset=UTF-8" -s "$mailsubject" "$mailaddr"
+           mailexit="$?"
+
+         fi
+
+         let mailcounter++
+
+         if [ "$mailexit" == 0 ]; then
+          echo "${0}: E-mail zugestellt am `date +%d.%m.%Y` um `date +%H:%M` Uhr." | tee >(logger --id=$$)
+          break
+         fi
+         sleep 30
+
        done
        [ "$mailcounter" -ge 5 ] && logger -s --id=$$ "Zustellen der Mail wurde nach 5 Versuchen abgebrochen."
        [ "$mailexit" != 0 ] && logger -s --id=$$ "Fehler von mail (Exitstatus: ${mailexit})"
+
       fi
 
      elif [ "$OPTARG" == notify ]; then

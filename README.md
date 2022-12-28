@@ -32,7 +32,7 @@ Man kann die Termine des aktuellen Tages mit der Option `-r` an unterschiedliche
 
 `-r mail`
 
-Hier kann man die Termine an eine E-mail-Adresse senden. Dazu reicht es, sich einen SMTP-Client wie zum Beispiel `msmtp` zu installieren und konfigurieren. Hier eine ganz kurze Beschreibung:  
+Hier kann man die Termine an eine E-Mail-Adresse senden. Dazu reicht es, sich einen SMTP-Client wie zum Beispiel `msmtp` zu installieren und konfigurieren. Hier eine ganz kurze Beschreibung:  
 1. Paketquellen aktualisieren.  
 2. Programme installieren mit `sudo apt-get install msmtp msmtp-mta mailutils`  
 3. Config-Datei `~/.msmtprc` anlegen und konfigurieren.
@@ -40,6 +40,26 @@ Hier kann man die Termine an eine E-mail-Adresse senden. Dazu reicht es, sich ei
 Weiterführende Informationen:  
 <https://decatec.de/linux/linux-einfach-e-mails-versenden-mit-msmtp/>  
 <https://marlam.de/msmtp/documentation/>
+
+Termine in E-Mails mit GnuPG verschlüsseln:
+
+1. Zunächst benötigt man den öffentlichen Schlüssel der Zieladresse (E-Mail) und notiert sich den 40-stelligen Fingerprint.
+2. Falls Gnupg2 noch nicht installiert ist, muss dieser Schritt noch gemacht werden: `sudo apt-get install gnupg2`
+3. Danach muss der öffentliche Schlüssel der Zieladresse (Email) importiert werden: `gpg2 --import dateiname.asc`
+4. Danach kann man die Fingerprints vergleichen. Den Fingerabdruck des gerade importierten Schlüssels erfährt man mit `gpg2 -k`
+5. Nun muss noch dem Schlüssel vertraut werden. Sind die beiden Fingerprints identisch gibt man folgenden Befehl ein: `gpg2 --edit-key [40-stelliger Fingerprint]`
+6. In der folgenden interaktiven Abfrage gibt man ein:  
+    `trust`  
+    `5` (5 = Ich vertraue ihm absolut)  
+    Eingabe mit `j` bestätigen  
+    `quit`
+7. Anschließend die Datenbank updaten: `gpg2 --update-trustdb`
+8. Die Verschlüsselung aktiviert man, indem man den 40-stelligen Fingerprint in die Variable `keyfingerprint` in der Datei `config/addressli.conf` einträgt. Nun sollten die Termine verschlüsselt übertragen werden.
+
+Hinweis: Es werden nur die Termine verschlüsselt, andere Elemente der E-Mail wie zum Beispiel der Betreff bleiben unberührt und werden gemäß der Konfiguration übertragen.  
+Weiterführende Informationen zur Verschlüsselung mit GnuPG:  
+<https://www.gnupg.org/documentation/>  
+<https://wiki.ubuntuusers.de/GnuPG/>
 
 `-r notify`
 
