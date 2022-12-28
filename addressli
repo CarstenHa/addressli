@@ -60,13 +60,14 @@ Options:
 
 	Kalender des laufenden Monats wird angezeigt.
 
-   -C
+   -C <yyyy>
 
 	Jahreskalender mit Feiertagen wird angezeigt. Benötigt einen Ländercode in der Datei
 	config/addressli.conf
 	Dieser kann mit gcal -?? ermittelt werden.
 	Beispiel:
 	AD (für Andorra)
+	Bei optionaler Angabe einer Jahreszahl werden die Feiertage des angegebenen Jahres angezeigt.
 
    -d
 
@@ -426,6 +427,16 @@ do
   C) gcalcheck
      confcheck
 
+     shift $(("$OPTIND"-1))
+     ejahr=$1
+     if [ -n "$ejahr" ]; then
+      while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
+       read -p "Bitte eine gültige Jahreszahl angeben (yyyy): " ejahr
+      done
+     else
+      ejahr="$(date +%Y)"
+     fi
+
      if [ "$dateformat" == "DE" ]; then
       dateformatcheck="yes"
      else
@@ -475,10 +486,10 @@ do
       # Doppelte Tage werden rausgefiltert.
       daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
       if [ "$highlighting" == "yes" ]; then
-       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" $(date +%Y))"
+       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
        hlight
       else
-       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" $(date +%Y))"
+       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
       fi
 
       # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
