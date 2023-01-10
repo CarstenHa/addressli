@@ -10,7 +10,7 @@ Vor dem erstmaligen Gebrauch muss die Datei address.txt in address.lst umbenannt
 Für dieses Programm werden die Pakete `ccrypt` zum Ver- und Entschlüsseln der address.lst, `qrencode` zum Erzeugen der QR-Codes und `gcal` für den Kalender und die Terminverwaltung benötigt.
 
 Alle Programme kann man in einem Rutsch installieren mit:  
-`sudo apt-get install ccrypt qrencode gcal`
+`sudo apt-get install ccrypt qrencode gcal at`
 
 Für die Synchronisation (`-s`) und die Optionen `-C` und `-r` muss die Datei `config/addressli.conf` angelegt und angepasst werden. Eine Vorlagendatei befindet sich im selben Ordner.
 
@@ -64,6 +64,10 @@ Weiterführende Informationen zur Verschlüsselung mit GnuPG:
 `-r notify`
 
 Termine als Benachrichtigungen mit `notify-send` auf dem Desktop ausgeben.
+
+Außerdem kann man für beide Options-Möglichkeiten (`mail` bzw. `notify`) Terminerinnerungen ausgeben lassen.
+Dazu muss lediglich die Variable remind in der Datei `config/addressli.conf` auf `yes` gesetzt werden. Näheres dazu ist in der .conf-Datei beschrieben.  
+Das Programm `at` wird für die Terminerinnerung benötigt.
 
 **Beispiele**
 
