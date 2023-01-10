@@ -144,6 +144,11 @@ Options:
 	notify  - Termine als Benachrichtigung mit notify-send auf dem Desktop ausgeben.
 	Für diese Option muss die Datei addressli.conf konfiguriert sein.
 
+	Wenn man die Variable remind in der Datei addressli.conf auf "yes" setzt, aktiviert man
+	die Terminerinnerung. Nach einer definierten Minutenzahl kann man sich Erinnerungen vor dem
+	eigentlichen Beginn des Termins ausgeben lassen.
+	Weitere Erläuterungen befinden sich in der Datei addressli.conf
+
    -s
 
 	Synchronisation mit einem Server mittels scp. Die Datei .hash.log dient hier als Referenzdatei
@@ -1035,13 +1040,124 @@ do
   r) gcalcheck
      confcheck
      datefilecheck
+
+     # ***** Terminerinnerung - Anfang *****
+     # Greift nur, wenn Variable remind in .conf-Datei auf "yes" gesetzt wurde.
+     if [ "$remind" == "yes" ]; then
+
+        [ -z "$(type -p at)" ] && logger -s --id=$$ "Das Programm at ist nicht installiert. Skript wird abgebrochen!" && exit 1
+
+        gcalcontent="$(gcal --exclude-fixed-dates-list-title --highlighting=no -f "$datefile" -c | sed '/^$/d')"
+        # Uhrzeiten werden zuerst alle in Minuten umgerechnet, dann verglichen und wieder umgerechnet.
+        zeitjetzt="$(date '+%H%M')"
+        zeitjetztmin="$(echo ${zeitjetzt#??} | sed 's/^0//')"
+        zeitjetztinmin=$((${zeitjetzt%??} * 60 + ${zeitjetztmin}))
+
+        while read -r dline; do
+
+         unset startzeitraw
+         unset startzeitinmin
+
+         # Es wird nur die früheste Uhrzeit im Format HH:MM ausgewertet.
+         uhrzeit="$(echo "$dline" | egrep -o '[0-9]{2}:[0-9]{2}' | sort -n)"
+         anzzeiten="$(echo "$uhrzeit" | sed '/^$/d' | wc -l)"
+
+         if [ "$anzzeiten" -gt 0 ]; then
+          startzeitraw="$(echo "$uhrzeit" | sed -n '1p' | sed 's/://')"
+
+          # ** Uhrzeit des Termins analysieren - Anfang **
+          if [ "$startzeitraw" -gt 2400 ]; then
+           logger -s --id=$$ "Terminerinnerung: Ungültiges Uhrzeitformat: ${dline}"
+           exit 1
+          else
+           # Die evtl. führende Null in startzeitminraw muss entfernt werden, da es sonst zu Fehlermeldung kommt.
+           # Siehe auch oben bei zeitjetztmin
+           startzeitminraw="$(echo ${startzeitraw#??} | sed 's/^0//')"
+           startzeitinminraw=$((${startzeitraw%??} * 60 + ${startzeitminraw}))
+
+           # Überprüfung der Variable minutesbefore
+           if [ -n "$minutesbefore" -a ! $(echo "$minutesbefore" | grep -E '^[[:digit:]]+$') ]; then
+            logger -s --id=$$ "Ungültiges Format in config-Datei in Variable minutesbefore (${minutesbefore})"
+            exit 1
+           elif [ -z "$minutesbefore" ]; then
+            minutesbefore=0
+           else
+            # Mögliche zu Beginn angegebene Nullen werden entfernt (Siehe dazu auch oben).
+            minutesbefore="$(echo ${minutesbefore} | sed 's/^0//')"
+           fi
+
+           startzeitinmin=$((${startzeitinminraw} - ${minutesbefore}))
+          fi
+          # ** Uhrzeit des Termins analysieren - Ende **
+
+          # ** Auswertung und Ausgabe der Terminerinnerung - Anfang **
+          # Es werden nur Termine an at übergeben, die außerhalb von minutesbefore in der Zukunft liegen.
+          # Andere Termine des aktuellen Tages werden ja sowieso publiziert (siehe unten).
+          if [ -n "$(echo "$startzeitinmin" | grep '^-')" ]; then
+
+           echo "Hinweis: Startzeit der Terminerinnerung liegt im Bereich des gestrigen Tages."
+
+          else
+
+           # Uhrzeit des Termins wird wieder in das ursprüngliche Format umgerechnet.
+           startzeit="$(printf '%02d:%02d\n' $(($startzeitinmin%3600/60)) $(($startzeitinmin%60)))"
+           zeitdiff=$((${startzeitinminraw} - ${zeitjetztinmin}))
+           if [ "$startzeitinminraw" -le "$zeitjetztinmin" -a "$zeitdiff" -le "$minutesbefore" ]; then
+            echo "Hinweis: Vergangener Termin des heutigen Tages (${startzeit} Uhr)."
+           elif [ "$zeitdiff" -le "$minutesbefore" ]; then
+            echo "Hinweis: Termin (${startzeit} Uhr) ist innerhalb der nächsten ${minutesbefore} Minuten."
+           else
+            echo "Termin wird an at übergeben."
+
+            if [ "$OPTARG" == mail ]; then
+
+             if [ -n "$keyfingerprint" ]; then
+
+              if [ -z "$(type -p gpg2)" ]; then
+               logger -s --id=$$ "Programm gnupg2 ist nicht installiert. Bitte erst installieren. Skript wird abgebrochen."
+               exit 1
+              fi
+              if [ "$(gpg2 --fingerprint "$keyfingerprint" &>/dev/null; echo $?)" != 0 ]; then
+               logger -s --id=$$ "Kein gültigen öffentlichen GPG-Schlüssel gefunden. Skript wird abgebrochen."
+               exit 1
+              else
+               echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit}
+              fi
+
+             else
+
+              echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit}
+
+             fi
+
+            elif [ "$OPTARG" == notify ]; then
+
+              [ -z "$(type -p notify-send)" ] && logger -s --id=$$ "Das Programm notify-send aus dem Paket libnotify-bin ist nicht installiert. Skript wird abgebrochen!" && exit 1
+              echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit}
+
+            fi
+
+           fi
+
+          fi
+          # ** Auswertung und Ausgabe der Terminerinnerung - Ende **
+
+         fi
+
+        done <<<"$gcalcontent"
+
+     fi
+     # ***** Terminerinnerung - Ende *****
+
      # Einige gcal Optionen:
      #--heading-text="Deine Termine heute:" (Personalisierte Überschrift)
      #--exclude-fixed-dates-list-title (Überschrift unterdrücken)
      if [ "$OPTARG" == mail ]; then
 
       [ -z "$(type -p mail)" ] && logger -s --id=$$ "Das Programm mail ist nicht installiert. Skript wird abgebrochen!" && exit 1
+
       gcalcontent="$(gcal --highlighting=no -f "$datefile" -c)"
+
       # Wenn keine Termine vorliegen, ist gcalcontent leer und sendet dann nix.
       if [ -n "$gcalcontent" ]; then
 
