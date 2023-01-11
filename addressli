@@ -1156,7 +1156,7 @@ do
 
                if [ "$makeatjob" == "yes" ]; then
                 echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-                sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+                sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "${pathofaddress}/.at.log"
                fi
 
               fi
@@ -1165,7 +1165,7 @@ do
 
               if [ "$makeatjob" == "yes" ]; then
                echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "${pathofaddress}/.at.log"
               fi
 
              fi
@@ -1175,7 +1175,7 @@ do
               [ -z "$(type -p notify-send)" ] && logger -s --id=$$ "Das Programm notify-send aus dem Paket libnotify-bin ist nicht installiert. Skript wird abgebrochen!" && exit 1
               if [ "$makeatjob" == "yes" ]; then
                echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#notify/' "${pathofaddress}/.at.log"
               fi
             fi
 
@@ -1208,7 +1208,7 @@ do
          done <<<"$altejobs"
 
          # Löschen der alten JobIDs aus at-Jobliste und .at.log (Wichtig!)
-         echo "Alte(r) Job(s) (${oldjobidlist% }) werden gelöscht."
+         echo "Alte(r) Job(s) (${oldjobidlist% }) Wird/werden gelöscht."
          deljobs=(${oldjobidlist% })
          for djob in ${deljobs[@]}; do
           # Man könnte auch z.B. atrm ID ID ID eingeben. Da sich aber unter Umständen auch noch alte, abgelaufene Einträge
