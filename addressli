@@ -1053,10 +1053,25 @@ do
         zeitjetztmin="$(echo ${zeitjetzt#??} | sed 's/^0//')"
         zeitjetztinmin=$((${zeitjetzt%??} * 60 + ${zeitjetztmin}))
 
+        # ** Logdatei ggf. anlegen **
+        # Die Logdatei ist deshalb notwendig, weil ggf. nach erneutem Aufruf der Option -r die Termine unter Umständen bereits in der
+        # at-Jobliste vorhanden sind.
+        # Gleiche Termine bleiben unverändert.
+        # Termine, wo noch eine Terminerinnerung verschickt werden soll, aber der Inhalt geändert wurde werden wie folgt behandelt:
+        # Veraltete Termine werden gelöscht (at-Jobliste und .at.log-Datei)
+        # Neue Termine werden der at-Jobliste zugeführt.
+        # Zeitlich abgelaufene Jobs bleiben in der .at.log-Datei.
+        [ "$(date '+%Y%m%d')" != "$(cat "${pathofaddress}/.at.log" 2>/dev/null | sed -n '1p')" -o ! -e "${pathofaddress}/.at.log" ] && date '+%Y%m%d' >"${pathofaddress}/.at.log"
+
         while read -r dline; do
 
          unset startzeitraw
          unset startzeitinmin
+         unset makeatjob
+
+         # Prüfsumme für at-JobID-Vergleich
+         dlinehash="$(echo -n "$dline" | md5sum | sed 's/ *-$//')"
+         hashlist+="$dlinehash"$'\n'
 
          # Es wird nur die früheste Uhrzeit im Format HH:MM ausgewertet.
          uhrzeit="$(echo "$dline" | egrep -o '[0-9]{2}:[0-9]{2}' | sort -n)"
@@ -1103,11 +1118,28 @@ do
            startzeit="$(printf '%02d:%02d\n' $(($startzeitinmin%3600/60)) $(($startzeitinmin%60)))"
            zeitdiff=$((${startzeitinminraw} - ${zeitjetztinmin}))
            if [ "$startzeitinminraw" -le "$zeitjetztinmin" -a "$zeitdiff" -le "$minutesbefore" ]; then
-            echo "Hinweis: Vergangener Termin des heutigen Tages (${startzeit} Uhr)."
+            echo "Hinweis: Vergangener Termin des heutigen Tages ($(echo "$uhrzeit" | sed -n '1p') Uhr) gefunden."
            elif [ "$zeitdiff" -le "$minutesbefore" ]; then
-            echo "Hinweis: Termin (${startzeit} Uhr) ist innerhalb der nächsten ${minutesbefore} Minuten."
+            echo "Hinweis: Termin ($(echo "$uhrzeit" | sed -n '1p') Uhr) innerhalb der nächsten ${minutesbefore} Minuten gefunden."
            else
-            echo "Termin wird an at übergeben."
+
+            # at-Jobs checken
+            dlinehashcheck="$(cat "${pathofaddress}/.at.log" | grep "$dlinehash")"
+            if [ -n "$dlinehashcheck" ]; then
+             atjobidlog="$(echo "$dlinehashcheck" | sed 's/^job \([0-9]*\) .*$/\1/')"
+             atqjobid="$(atq | grep '^'"$atjobidlog"'[[:space:]]' | grep -o '^[0-9]*')"
+             if [ "$atjobidlog" == "$atqjobid" ]; then
+              echo "Termin (JobID: ${atjobidlog}) ist schon in at-Jobliste."
+             elif [ "$atjobidlog" != "$atqjobid" ]; then
+              echo "Unterschiedliche JobIDS bei gleichem Termin gefunden. Bitte prüfen! Es wird kein neuer at-Job erstellt."
+              echo "Hashwert              : ${dlinehash}"
+              echo "JobID in Logdatei     : ${atjobidlog}"
+              echo "JobID von atq-Ausgabe : ${atqjobid}"
+             fi
+            else
+             echo "Termin ($(echo "$uhrzeit" | sed -n '1p') Uhr) wird an at übergeben."
+             makeatjob="yes"
+            fi
 
             if [ "$OPTARG" == mail ]; then
 
@@ -1121,20 +1153,30 @@ do
                logger -s --id=$$ "Kein gültigen öffentlichen GPG-Schlüssel gefunden. Skript wird abgebrochen."
                exit 1
               else
-               echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit}
+
+               if [ "$makeatjob" == "yes" ]; then
+                echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
+                sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+               fi
+
               fi
 
              else
 
-              echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit}
+              if [ "$makeatjob" == "yes" ]; then
+               echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+              fi
 
              fi
 
             elif [ "$OPTARG" == notify ]; then
 
               [ -z "$(type -p notify-send)" ] && logger -s --id=$$ "Das Programm notify-send aus dem Paket libnotify-bin ist nicht installiert. Skript wird abgebrochen!" && exit 1
-              echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit}
-
+              if [ "$makeatjob" == "yes" ]; then
+               echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'/' "${pathofaddress}/.at.log"
+              fi
             fi
 
            fi
@@ -1145,6 +1187,37 @@ do
          fi
 
         done <<<"$gcalcontent"
+
+        # *** Löschen der veralteten Jobs aus at-Jobliste und aus Logdatei (zeitlich abgelaufene Einträge bleiben in der Datei!) ***
+        # Veraltete Jobs sind zum Beispiel Termine, wo sich der Inhalt geändert hat aber die Zeit noch in der Zukunft liegt.
+
+        # Logdatei bereinigen und unnütze Zeilen löschen
+        sed -i '/^warning: commands will be executed using/d' "${pathofaddress}/.at.log"
+        hashlist="$(echo "$hashlist" | sed '/^$/d' | sort)"
+        hashlistlogfile="$(cat "${pathofaddress}/.at.log" | grep '^job' | cut -f2 -d'#' | sort)"
+
+        altejobs="$(diff <(echo "$hashlist") <(echo "$hashlistlogfile") | grep '^>' | cut -f2 -d' ')"
+
+        if [ -n "$altejobs" ]; then
+
+         # JobIDs der alten Jobs werden ermittelt.
+         while read -r oldjob; do
+          jobline="$(cat "${pathofaddress}/.at.log" | grep "$oldjob")"
+          oldjobid="$(echo "$jobline" | sed 's/^job \([0-9]*\) .*$/\1/')"
+          oldjobidlist+="${oldjobid} "
+         done <<<"$altejobs"
+
+         # Löschen der alten JobIDs aus at-Jobliste und .at.log (Wichtig!)
+         echo "Alte(r) Job(s) (${oldjobidlist% }) werden gelöscht."
+         deljobs=(${oldjobidlist% })
+         for djob in ${deljobs[@]}; do
+          # Man könnte auch z.B. atrm ID ID ID eingeben. Da sich aber unter Umständen auch noch alte, abgelaufene Einträge
+          # in .at.log befinden können, wird dies einzeln in dieser Schleife gemacht.
+          [ -n "$(atq "${djob}")" ] && atrm "$djob"
+          sed -i '/^job '$djob' /d' "${pathofaddress}/.at.log"
+         done
+
+        fi
 
      fi
      # ***** Terminerinnerung - Ende *****
