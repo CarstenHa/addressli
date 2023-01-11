@@ -483,7 +483,7 @@ do
 
      while [ -z "$auswahl" ]; do
       read -p "Bitte Ländercode auswählen: " land
-      auswahl="$(ccontent | grep "$land" | sed 's/^ *//' | cut -f2)"
+      auswahl="$(ccontent | grep "[[:space:]]${land}[[:space:]]" | sed 's/^ *//' | cut -f2)"
      done
 
      if [ -n "$extholidays" ]; then
@@ -1061,7 +1061,9 @@ do
         # Veraltete Termine werden gelöscht (at-Jobliste und .at.log-Datei)
         # Neue Termine werden der at-Jobliste zugeführt.
         # Zeitlich abgelaufene Jobs bleiben in der .at.log-Datei.
-        [ "$(date '+%Y%m%d')" != "$(cat "${pathofaddress}/.at.log" 2>/dev/null | sed -n '1p')" -o ! -e "${pathofaddress}/.at.log" ] && date '+%Y%m%d' >"${pathofaddress}/.at.log"
+        [ "$OPTARG" == mail ] && atlogfile="${pathofaddress}/.at_mail.log"
+        [ "$OPTARG" == notify ] && atlogfile="${pathofaddress}/.at_notify.log"
+        [ "$(date '+%Y%m%d')" != "$(cat "$atlogfile" 2>/dev/null | sed -n '1p')" -o ! -e "$atlogfile" ] && date '+%Y%m%d' >"$atlogfile"
 
         while read -r dline; do
 
@@ -1124,7 +1126,7 @@ do
            else
 
             # at-Jobs checken
-            dlinehashcheck="$(cat "${pathofaddress}/.at.log" | grep "$dlinehash")"
+            dlinehashcheck="$(cat "$atlogfile" | grep "$dlinehash")"
             if [ -n "$dlinehashcheck" ]; then
              atjobidlog="$(echo "$dlinehashcheck" | sed 's/^job \([0-9]*\) .*$/\1/')"
              atqjobid="$(atq | grep '^'"$atjobidlog"'[[:space:]]' | grep -o '^[0-9]*')"
@@ -1155,8 +1157,8 @@ do
               else
 
                if [ "$makeatjob" == "yes" ]; then
-                echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-                sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "${pathofaddress}/.at.log"
+                echo "echo \"${dline}\" | gpg2 --encrypt -a --recipient \"$keyfingerprint\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"$atlogfile"
+                sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "$atlogfile"
                fi
 
               fi
@@ -1164,8 +1166,8 @@ do
              else
 
               if [ "$makeatjob" == "yes" ]; then
-               echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "${pathofaddress}/.at.log"
+               echo "echo \"${dline}\" | mail -a \"Content-Type: text/plain; charset=UTF-8\" -s \"$mailsubject2\" \"$mailaddr\"" | at ${startzeit} &>>"$atlogfile"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#mail/' "$atlogfile"
               fi
 
              fi
@@ -1174,8 +1176,8 @@ do
 
               [ -z "$(type -p notify-send)" ] && logger -s --id=$$ "Das Programm notify-send aus dem Paket libnotify-bin ist nicht installiert. Skript wird abgebrochen!" && exit 1
               if [ "$makeatjob" == "yes" ]; then
-               echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit} &>>"${pathofaddress}/.at.log"
-               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#notify/' "${pathofaddress}/.at.log"
+               echo "notify-send -i /usr/share/icons/gnome/48x48/status/info.png \"$notifysubject2\" \"$dline\"" | at ${startzeit} &>>"$atlogfile"
+               sed -i '$s/\(.*$\)/\1#'"$dlinehash"'#notify/' "$atlogfile"
               fi
             fi
 
@@ -1192,9 +1194,9 @@ do
         # Veraltete Jobs sind zum Beispiel Termine, wo sich der Inhalt geändert hat aber die Zeit noch in der Zukunft liegt.
 
         # Logdatei bereinigen und unnütze Zeilen löschen
-        sed -i '/^warning: commands will be executed using/d' "${pathofaddress}/.at.log"
+        sed -i '/^warning: commands will be executed using/d' "$atlogfile"
         hashlist="$(echo "$hashlist" | sed '/^$/d' | sort)"
-        hashlistlogfile="$(cat "${pathofaddress}/.at.log" | grep '^job' | cut -f2 -d'#' | sort)"
+        hashlistlogfile="$(cat "$atlogfile" | grep '^job' | cut -f2 -d'#' | sort)"
 
         altejobs="$(diff <(echo "$hashlist") <(echo "$hashlistlogfile") | grep '^>' | cut -f2 -d' ')"
 
@@ -1202,25 +1204,29 @@ do
 
          # JobIDs der alten Jobs werden ermittelt.
          while read -r oldjob; do
-          jobline="$(cat "${pathofaddress}/.at.log" | grep "$oldjob")"
+          jobline="$(cat "$atlogfile" | grep "$oldjob")"
           oldjobid="$(echo "$jobline" | sed 's/^job \([0-9]*\) .*$/\1/')"
           oldjobidlist+="${oldjobid} "
          done <<<"$altejobs"
 
          # Löschen der alten JobIDs aus at-Jobliste und .at.log (Wichtig!)
-         echo "Alte(r) Job(s) (${oldjobidlist% }) Wird/werden gelöscht."
+         echo "Alte(r) Job(s) (${oldjobidlist% }) wird/werden gelöscht."
          deljobs=(${oldjobidlist% })
          for djob in ${deljobs[@]}; do
           # Man könnte auch z.B. atrm ID ID ID eingeben. Da sich aber unter Umständen auch noch alte, abgelaufene Einträge
           # in .at.log befinden können, wird dies einzeln in dieser Schleife gemacht.
           [ -n "$(atq "${djob}")" ] && atrm "$djob"
-          sed -i '/^job '$djob' /d' "${pathofaddress}/.at.log"
+          sed -i '/^job '$djob' /d' "$atlogfile"
          done
 
         fi
 
      fi
      # ***** Terminerinnerung - Ende *****
+
+     # Dies ist wichtig für die Option -w. Nach der Bearbeitung der dates.rc wird die Terminerinnerung aktualisiert.
+     shift $(($OPTIND - 1))
+     [ "$1" == "remindupdate" ] && exit
 
      # Einige gcal Optionen:
      #--heading-text="Deine Termine heute:" (Personalisierte Überschrift)
@@ -1390,6 +1396,11 @@ do
   w) gcalcheck
      datefilecheck
      nano "$datefile"
+     echo "Terminerinnerungen mail werden aktualisiert ..."
+     $0 -r mail remindupdate
+     echo "Terminerinnerungen notify werden aktualisiert ..."
+     $0 -r notify remindupdate
+     echo "Fertig."
      exit
   ;;
 
