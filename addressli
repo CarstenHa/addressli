@@ -146,8 +146,9 @@ Options:
 
 	Wenn man die Variable remind in der Datei addressli.conf auf "yes" setzt, aktiviert man
 	die Terminerinnerung. Nach einer definierten Minutenzahl kann man sich Erinnerungen vor dem
-	eigentlichen Beginn des Termins ausgeben lassen.
-	Weitere Erläuterungen befinden sich in der Datei addressli.conf
+	eigentlichen Beginn des Termins ausgeben lassen. Ändert man oft die Datei dates.rc, kann man die
+	Änderungen auch mit einem Cron-Eintrag überwachen lassen. Näheres dazu weiter unten.
+	Weitere Erläuterungen zur Konfiguration befinden sich auch in der Datei addressli.conf
 
    -s
 
@@ -189,6 +190,11 @@ Beispiel 1 (Synchronisation zu jeder vollen Stunde):
 0 * * * * $0 -s
 Beispiel 2 (Termine des Tages einmalig beim Start mit E-Mail verschicken):
 @reboot $0 -r mail
+Beispiele 3 und 4 (Überwachung der Datei dates.rc, um den Inhalt von Terminerinnerungen aktuell zu halten):
+*/20 * * * * $0 -r notify remindupdate (Alle 20 Minuten werden die Termine des aktuellen Tages geprüft
+                                        und ggf. an at-Dienst übergeben.)
+*/20 * * * * $0 -r mail remindupdate   (Das Gleiche wie oben, nur für die Terminerinnerungen, die mit einer Mail
+                                        verschickt werden.)
 
 EOU
 }
@@ -1051,16 +1057,17 @@ do
         # Uhrzeiten werden zuerst alle in Minuten umgerechnet, dann verglichen und wieder umgerechnet.
         zeitjetzt="$(date '+%H%M')"
         zeitjetztmin="$(echo ${zeitjetzt#??} | sed 's/^0//')"
-        zeitjetztinmin=$((${zeitjetzt%??} * 60 + ${zeitjetztmin}))
+        zeitjetztstd="$(echo ${zeitjetzt%??} | sed 's/^0//')"
+        zeitjetztinmin=$((${zeitjetztstd} * 60 + ${zeitjetztmin}))
 
         # ** Logdatei ggf. anlegen **
         # Die Logdatei ist deshalb notwendig, weil ggf. nach erneutem Aufruf der Option -r die Termine unter Umständen bereits in der
         # at-Jobliste vorhanden sind.
         # Gleiche Termine bleiben unverändert.
-        # Termine, wo noch eine Terminerinnerung verschickt werden soll, aber der Inhalt geändert wurde werden wie folgt behandelt:
-        # Veraltete Termine werden gelöscht (at-Jobliste und .at.log-Datei)
+        # Termine, wo noch eine Terminerinnerung verschickt werden soll, aber der Inhalt geändert wurde, werden wie folgt behandelt:
+        # Veraltete (geänderte) Termine werden gelöscht (at-Jobliste und .at.log-Datei)
         # Neue Termine werden der at-Jobliste zugeführt.
-        # Zeitlich abgelaufene Jobs bleiben in der .at.log-Datei.
+        # Zeitlich abgelaufene (ausgeführte) Jobs bleiben bis zur nächsten Änderung in der .at.log-Datei.
         [ "$OPTARG" == mail ] && atlogfile="${pathofaddress}/.at_mail.log"
         [ "$OPTARG" == notify ] && atlogfile="${pathofaddress}/.at_notify.log"
         [ "$(date '+%Y%m%d')" != "$(cat "$atlogfile" 2>/dev/null | sed -n '1p')" -o ! -e "$atlogfile" ] && date '+%Y%m%d' >"$atlogfile"
@@ -1087,10 +1094,11 @@ do
            logger -s --id=$$ "Terminerinnerung: Ungültiges Uhrzeitformat: ${dline}"
            exit 1
           else
-           # Die evtl. führende Null in startzeitminraw muss entfernt werden, da es sonst zu Fehlermeldung kommt.
-           # Siehe auch oben bei zeitjetztmin
+           # Die evtl. führende Null in startzeit*raw muss entfernt werden, da es sonst zu Fehlermeldung kommt.
+           # Siehe auch oben bei zeitjetzt*
            startzeitminraw="$(echo ${startzeitraw#??} | sed 's/^0//')"
-           startzeitinminraw=$((${startzeitraw%??} * 60 + ${startzeitminraw}))
+           startzeitstdraw="$(echo ${startzeitraw%??} | sed 's/^0//')"
+           startzeitinminraw=$((${startzeitstdraw} * 60 + ${startzeitminraw}))
 
            # Überprüfung der Variable minutesbefore
            if [ -n "$minutesbefore" -a ! $(echo "$minutesbefore" | grep -E '^[[:digit:]]+$') ]; then
@@ -1100,7 +1108,7 @@ do
             minutesbefore=0
            else
             # Mögliche zu Beginn angegebene Nullen werden entfernt (Siehe dazu auch oben).
-            minutesbefore="$(echo ${minutesbefore} | sed 's/^0//')"
+            [ ! "$minutesbefore" == "0" ] && minutesbefore="$(echo ${minutesbefore} | sed 's/^0//')"
            fi
 
            startzeitinmin=$((${startzeitinminraw} - ${minutesbefore}))
@@ -1131,7 +1139,7 @@ do
              atjobidlog="$(echo "$dlinehashcheck" | sed 's/^job \([0-9]*\) .*$/\1/')"
              atqjobid="$(atq | grep '^'"$atjobidlog"'[[:space:]]' | grep -o '^[0-9]*')"
              if [ "$atjobidlog" == "$atqjobid" ]; then
-              echo "Termin (JobID: ${atjobidlog}) ist schon in at-Jobliste."
+              echo "Termin (JobID: ${atjobidlog}/$(echo "$uhrzeit" | sed -n '1p') Uhr) ist schon in at-Jobliste."
              elif [ "$atjobidlog" != "$atqjobid" ]; then
               echo "Unterschiedliche JobIDS bei gleichem Termin gefunden. Bitte prüfen! Es wird kein neuer at-Job erstellt."
               echo "Hashwert              : ${dlinehash}"
@@ -1224,7 +1232,8 @@ do
      fi
      # ***** Terminerinnerung - Ende *****
 
-     # Dies ist wichtig für die Option -w. Nach der Bearbeitung der dates.rc wird die Terminerinnerung aktualisiert.
+     # Dies ist wichtig, wenn man die Terminerinnerung mit Cron überwachen möchte.
+     # Termine des Tages werden dann nicht mit ausgegeben.
      shift $(($OPTIND - 1))
      [ "$1" == "remindupdate" ] && exit
 
@@ -1396,11 +1405,6 @@ do
   w) gcalcheck
      datefilecheck
      nano "$datefile"
-     echo "Terminerinnerungen mail werden aktualisiert ..."
-     $0 -r mail remindupdate
-     echo "Terminerinnerungen notify werden aktualisiert ..."
-     $0 -r notify remindupdate
-     echo "Fertig."
      exit
   ;;
 
