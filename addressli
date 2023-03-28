@@ -60,7 +60,7 @@ Options:
 
 	Kalender des laufenden Monats wird angezeigt.
 
-   -C <yyyy>
+   -C <yyyy> <altern. Ländercode>
 
 	Jahreskalender mit Feiertagen wird angezeigt. Benötigt einen Ländercode in der Datei
 	config/addressli.conf
@@ -68,6 +68,8 @@ Options:
 	Beispiel:
 	AD (für Andorra)
 	Bei optionaler Angabe einer Jahreszahl werden die Feiertage des angegebenen Jahres angezeigt.
+	Es kann auch ein alternativer Ländercode angegeben werden, der nicht in der config-Datei
+	definiert ist. Dieser wird dann anstelle eines Ländercodes aus der config-Datei übernommen.
 
    -d
 
@@ -82,7 +84,7 @@ Options:
 	listet die Termine für die kommenden 12 Monate auf.
 	Bei optionaler Angabe einer Jahreszahl werden die Termine des angegebenen Jahres angezeigt.
 
-   -e [argument] [yyyy]
+   -e [argument] [yyyy] <altern. Ländercode>
 
 	exportiert die Feiertage und/oder Termine eines angegeben Jahres in eine .ics-Datei.
 	Benötigt weitere Angaben in Form eines Formats und einer Jahreszahl.
@@ -91,6 +93,10 @@ Options:
 	ics     - Exportiert Feiertage und Termine eines angegebenen Kalenderjahres in das .ics-Dateiformat.
 	ics:h   - Exportiert nur die Feiertage eines angegebenen Kalenderjahres in das .ics-Dateiformat.
 	ics:d   - Exportiert nur die Termine eines angegebenen Kalenderjahres in das .ics-Dateiformat.
+
+	Es kann auch für die Formate ics und ics:h ein alternativer Ländercode angegeben werden,
+	der nicht in der config-Datei definiert ist. Dieser wird dann anstelle eines Ländercodes aus der
+	config-Datei übernommen.
 
    -E [argument] [name]
 
@@ -439,14 +445,17 @@ do
      confcheck
 
      shift $(("$OPTIND"-1))
-     ejahr=$1
-     if [ -n "$ejahr" ]; then
-      while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
-       read -p "Bitte eine gültige Jahreszahl angeben (yyyy): " ejahr
-      done
-     else
-      ejahr="$(date +%Y)"
-     fi
+
+     adrstring="$@"
+     for arg in ${adrstring[@]}; do
+      if [[ "$arg" == [0-9][0-9][0-9][0-9] ]]; then
+       ejahr="$arg"
+      elif [[ "$arg" == [[:alpha:]][[:alpha:]] || "$arg" == [[:alpha:]][[:alpha:]]_[[:alpha:]][[:alpha:]] ]]; then
+       auswahl="$arg"
+      fi
+     done
+
+     [ -z "$ejahr" ] && ejahr="$(date +%Y)"
 
      if [ "$dateformat" == "DE" ]; then
       dateformatcheck="yes"
@@ -460,7 +469,6 @@ do
        echo "$cc"
       done | nl
      }
-     ccontent
 
      exdays() {
       if [ -n "$excludedays" ]; then
@@ -488,6 +496,7 @@ do
      }
 
      while [ -z "$auswahl" ]; do
+      ccontent
       read -p "Bitte Ländercode auswählen: " land
       auswahl="$(ccontent | grep "[[:space:]]${land}[[:space:]]" | sed 's/^ *//' | cut -f2)"
      done
@@ -495,7 +504,7 @@ do
      if [ -n "$extholidays" ]; then
 
       # Doppelte Tage werden rausgefiltert.
-      daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+      daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
       if [ "$highlighting" == "yes" ]; then
        calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
        hlight
@@ -512,7 +521,7 @@ do
                                    done <<<"$daylist"
 
       exdays
-      echo -e "$calcontent"
+      [ -n "$calcontent" ] && echo -e "$calcontent"
 
      else
 
@@ -524,7 +533,7 @@ do
       fi
 
       exdays
-      echo -e "$calcontent"
+      [ -n "$calcontent" ] && echo -e "$calcontent"
 
      fi
      echo ""
@@ -564,7 +573,16 @@ do
       confcheck
 
       shift $(("$OPTIND"-1))
-      ejahr=$1
+
+      adrstring="$@"
+      for arg in ${adrstring[@]}; do
+       if [[ "$arg" == [0-9][0-9][0-9][0-9] ]]; then
+        ejahr="$arg"
+       elif [[ "$arg" == [[:alpha:]][[:alpha:]] || "$arg" == [[:alpha:]][[:alpha:]]_[[:alpha:]][[:alpha:]] ]]; then
+        eauswahl="$arg"
+       fi
+      done
+
       while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
        read -p "Bitte ein Jahr angeben (yyyy): " ejahr
       done
@@ -647,14 +665,16 @@ do
          fi
        }
 
-       econtent
        while [ -z "$eauswahl" ]; do
+        econtent
         read -p "Bitte Ländercode auswählen: " eland
         eauswahl="$(econtent | grep "$eland" | sed 's/^ *//' | cut -f2)"
        done
        if [ -n "$extholidays" ]; then
 
         calcontent="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays" --date-format="%>04*Y-%>02*M-%1%>02*D%2" "$ejahr")"
+        # Abbruch bei ungültigem Ländercode.
+        [ $? -gt 0 ] && exit
         # Doppelte Tage werden rausgefiltert.
         daylist="$(gcal -u -K -q${eauswahl} -H no --holiday-list --"$extholidays"  "$ejahr" | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
         extholidaysabbr="$(gcal --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
