@@ -201,15 +201,24 @@ $0 -r notify
 Cron:
 Auch die Verwendung mit Cron ist möglich. Ggf. muss die Zeile [ -z "$SSH_AUTH_SOCK" ] && export SSH_AUTH_SOCK= ...
 in der Datei addressli.conf komplettiert und einkommentiert werden.
+
 Beispiel 1 (Synchronisation zu jeder vollen Stunde):
 0 * * * * $0 -s
+
 Beispiel 2 (Termine des Tages einmalig beim Start mit E-Mail verschicken):
 @reboot $0 -r mail
+
 Beispiele 3 und 4 (Überwachung der Datei dates.rc, um den Inhalt von Terminerinnerungen aktuell zu halten):
 */20 * * * * $0 -r notify remindupdate (Alle 20 Minuten werden die Termine des aktuellen Tages geprüft
                                         und ggf. an at-Dienst übergeben.)
 */20 * * * * $0 -r mail remindupdate   (Das Gleiche wie oben, nur für die Terminerinnerungen, die mit einer Mail
                                         verschickt werden.)
+
+Beispiel 5 (Exportieren der Termindaten in den Evolution-Kalender-Ordner. Achtung: die PATH-Variable muss
+bei dieser Schreibweise in der Crontab gesetzt sein!):
+@reboot sleep 15 && cd /pfad/zum/evolution/calendar && addressli -e ics:d 2023 && addressli -e ics:d 2024
+Zu beachten ist hier, dass die Datenintegration hier zur Zeit nur in eine Richtung funktioniert: addressli => Evolution
+Außerdem muss der Kalender in Evolution noch einmalig hinzugefügt werden.
 
 EOU
 }
