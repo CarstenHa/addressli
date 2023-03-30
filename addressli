@@ -17,6 +17,14 @@
 # Mit readlink kann man den tatsächlichen Speicherort des Skriptes ermitteln.
 pathofaddress="$(dirname $(readlink -f ${0}))"
 
+if [ ! -e "${pathofaddress}/config/addressli.conf" ]; then
+ echo -e "Datei ${pathofaddress}/config/addressli.conf existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/config/example.conf\nSkript wird abgebrochen!"
+ exit 1
+else
+ conffile="${pathofaddress}/config/addressli.conf"
+ source "$conffile" 2>/dev/null
+fi
+
 if [ -z "$(type -p ccrypt)" ]; then
  echo -e "Das Programm ccrypt zur Entschlüsselung der Adressdaten muss installiert sein.\nBitte sudo apt-get install ccrypt ausführen und dieses Skript neu starten."
  exit 1
@@ -40,6 +48,7 @@ if [ -z "$(type -p qrencode)" ]; then
  exit 1
 fi
 
+# ********** Funktionen - Anfang  **********
 usage() {
 cat <<EOU
 
@@ -406,15 +415,6 @@ gcalcheck() {
      exit 1
     fi
 }
-confcheck() {
-    if [ ! -e "${pathofaddress}/config/addressli.conf" ]; then
-     echo -e "Datei ${pathofaddress}/config/addressli.conf existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/config/example.conf\nSkript wird abgebrochen!"
-     exit 1
-    else
-     conffile="${pathofaddress}/config/addressli.conf"
-     source "$conffile" 2>/dev/null
-    fi
-}
 datefilecheck() {
     if [ ! -e "${pathofaddress}/dates/dates.rc" ]; then
      echo -e "Ressource-Datei ${pathofaddress}/dates/dates.rc existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/dates/example.rc\nSkript wird abgebrochen!"
@@ -428,6 +428,132 @@ checksum() {
     md5sum "${pathofaddress}/address.lst.cpt" 2>/dev/null
     md5sum "$datefile" 2>/dev/null
 }
+filesync() {
+    if [ "$async" == "yes" ]; then
+
+     unset syncerr
+     echo "**** Synchronisation der Daten mit dem Server ${sshuserhost#*@} ****"
+     if [ ! "$(ping -c 1 "${sshuserhost#*@}" &>/dev/null; echo $?)" == 0 ]; then
+
+      logger -s --id=$$ "${0}: Server ${sshuserhost#*@} nicht erreichbar."
+      # Diese Variable wird benötigt für Funktion adrdecrypt und Option -w
+      # Damit vor der Bearbeitung einer Datei noch die Möglichkeit zum Abbruch besteht.
+      syncerr="1"
+
+     else
+
+      listoffiles=(address.lst.cpt dates.rc)
+
+      for file in ${listoffiles[@]}; do
+
+       oldhash="$(cat "${pathofaddress}/.hash.log" | grep "$file" | cut -f1 -d' ')"
+
+       newcheck="$(checksum | grep "$file")"
+       newhash="$(echo "$newcheck" | cut -f1 -d' ')"
+       localdirname="$(echo "$newcheck" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
+       localdir="$(dirname "${localdirname}")"
+       localmoddate="$(stat --format=%Y "${localdirname}")"
+
+       [ -z "$remotehashraw" ] && remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
+       remotehash="$(echo "$remotehashraw" | grep "$file" | cut -f1 -d' ')"
+       remotedirname="$(echo "$remotehashraw" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
+       remotedir="$(dirname "${remotedirname}")"
+       remotemoddate="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" 'stat --format=%Y '"${remotedirname}"'')"
+
+       if [ "$oldhash" != "$newhash" -a "$oldhash" != "$remotehash" ]; then
+
+        logger -s --id=$$ "Es gibt einen Konflikt mit der Datei ${file}."
+        if [ "${file}" == "dates.rc" ]; then
+         echo "                                      local < = > remote"
+         diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
+        fi
+        echo "Dateien bitte manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
+        syncerr="1"
+
+       elif [ "$oldhash" == "$newhash" -a "$oldhash" == "$remotehash" ]; then
+
+        echo "${0}: Keine Veränderung an Datei ${file} festgestellt." | tee >(logger --id=$$)
+
+       # Bearbeitete Datei (newhash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+       # aber die remote-Datei (remotehash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+       # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
+       # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
+       elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" -a "$remotemoddate" -ge "$localmoddate" ]; then
+        echo "Download der Datei ${file} vom Server ${sshuserhost} ..."
+        scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedir}/${file}" "${localdir}/"
+        exitdown=$?
+        if [ "$exitdown" == 0 ]; then
+         checksum >"${pathofaddress}/.hash.log"
+         echo "${0}: Download der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+        else
+         logger -s --id=$$ "Fehler beim Download der Datei ${file}."
+         syncerr="1"
+        fi
+
+       # Die remote-Datei (remotehash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+       # aber die bearbeitete Datei (newhash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
+       # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
+       # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
+       elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" -a "$localmoddate" -ge "$remotemoddate" ]; then
+        echo "Upload der Datei ${file} zum Server ${sshuserhost} ..."
+        scp -pP "$sshport" -i "$sshkeyfile" "${localdir}/${file}" "${sshuserhost}:${remotedir}/"
+        exitup=$?
+        if [ "$exitup" == 0 ]; then
+         checksum >"${pathofaddress}/.hash.log"
+         echo "${0}: Upload der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
+        else
+         logger -s --id=$$ "Fehler beim Upload der Datei ${file}."
+         syncerr="1"
+        fi
+
+       else
+
+        logger -s --id=$$ "Es gibt einen undefinierten Konflikt mit der Datei ${file}."
+        printf 'Dateiame                      : %-30s\n' "${file}"
+        printf 'Server                        : %-30s\n' "${sshuserhost#*@}"
+        printf "Alter Hash-Wert aus .hash.log : %-30s\n" "${oldhash}"
+        printf 'Hash-Wert der lokalen Datei   : %-30s\n' "${newhash}"
+        printf 'Hash-Wert der Server-Datei    : %-30s\n' "${remotehash}"
+        printf 'Zeitstempel der lokalen Datei : %-30d\n' "${localmoddate}"
+        printf 'Zeitstempel der Server-Datei  : %-30d\n' "${remotemoddate}"
+        syncerr="1"
+        exit 1
+
+       fi
+
+      done
+
+     # Ende der Verzweigung (ping)
+     fi
+
+    else
+     echo "Keine Synchronisation in ${conffile} eingerichtet."
+    fi
+}
+adrdecrypt() {
+    if [ "$modifysync" == "yes" ]; then
+     filesync
+     [ "$syncerr" == 1 ] && read -p "Ohne Synchronisation weiter mit [ENTER]. Abbruch mit [STRG]+[C]"
+    fi
+    echo "Adressdatei wird gesichert und zur Bearbeitung entschlüsselt ..."
+    cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
+    ccdecrypt "${pathofaddress}/address.lst.cpt"
+    while [ ! "$?" == "0" ]; do
+     echo "Bitte Passwort erneut eingeben:"
+     ccdecrypt "${pathofaddress}/address.lst.cpt"
+    done
+}
+adrencrypt() {
+    echo "Die Adressdatei wird wieder verschlüsselt (bei Wunsch auch mit neuem Passwort) ..."
+    ccencrypt "${pathofaddress}/address.lst"
+    while [ ! "$?" == "0" ]; do
+     echo "Bitte Passwort erneut eingeben:"
+     ccencrypt "${pathofaddress}/address.lst"
+    done
+    [ "$modifysync" == "yes" ] && filesync
+}
+# ********** Funktionen - Ende  **********
+
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
 while getopts cCdDe:E:hl:m:n:r:swW opt
@@ -442,7 +568,6 @@ do
   ;;
 
   C) gcalcheck
-     confcheck
 
      shift $(("$OPTIND"-1))
 
@@ -570,7 +695,6 @@ do
      if [ "$expformat" == "ics:h" -o "$expformat" == "ics:d" -o "$expformat" == "ics" ]; then
 
       gcalcheck
-      confcheck
 
       shift $(("$OPTIND"-1))
 
@@ -861,13 +985,7 @@ do
 
      elif [ "$OPTARG" == "delmess" ]; then
 
-      echo "Adressdatei wird gesichert ..."
-      cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
-      ccdecrypt "${pathofaddress}/address.lst.cpt"
-      while [ ! "$?" == "0" ]; do
-        echo "Bitte Passwort erneut eingeben:"
-        ccdecrypt "${pathofaddress}/address.lst.cpt"
-      done
+      adrdecrypt
 
       shift $(("$OPTIND"-1))
       nachname="$1"
@@ -910,12 +1028,7 @@ do
       echo "Zeile ${zeilennr} wird aus Adressdatendatei gelöscht ..."
       sed -i "${zeilennr}d" "${pathofaddress}/address.lst"
 
-      echo "Datei wird wieder verschlüsselt ..."
-      ccencrypt "${pathofaddress}/address.lst"
-      while [ ! "$?" == "0" ]; do
-        echo "Bitte Passwort erneut eingeben:"
-        ccencrypt "${pathofaddress}/address.lst"
-      done
+      adrencrypt
 
       exit 0
 
@@ -1020,13 +1133,7 @@ do
       
      fi
      
-     echo "Adressdatei wird gesichert ..."
-     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
-     ccdecrypt "${pathofaddress}/address.lst.cpt"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccdecrypt "${pathofaddress}/address.lst.cpt"
-     done
+     adrdecrypt
      
      if [ "$OPTARG" == "vcf" ]; then
      
@@ -1053,18 +1160,12 @@ do
      
      fi
      
-     echo "Datei wird wieder verschlüsselt ..."
-     ccencrypt "${pathofaddress}/address.lst"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccencrypt "${pathofaddress}/address.lst"
-     done
+     adrencrypt
      
      exit
   ;;
 
   r) gcalcheck
-     confcheck
      datefilecheck
 
      # ***** Terminerinnerung - Anfang *****
@@ -1320,100 +1421,8 @@ do
      exit
   ;;
 
-  s) confcheck
-     datefilecheck
-     if [ "$async" == "yes" ]; then
-
-      echo "**** Synchronisation der Daten mit dem Server ${sshuserhost#*@} ****"
-      if [ ! "$(ping -c 1 "${sshuserhost#*@}" &>/dev/null; echo $?)" == 0 ]; then
-
-       logger -s --id=$$ "${0}: Server ${sshuserhost#*@} nicht erreichbar"
-
-      else
-
-       listoffiles=(address.lst.cpt dates.rc)
-
-       for file in ${listoffiles[@]}; do
-
-        oldhash="$(cat "${pathofaddress}/.hash.log" | grep "$file" | cut -f1 -d' ')"
-
-        newcheck="$(checksum | grep "$file")"
-        newhash="$(echo "$newcheck" | cut -f1 -d' ')"
-        localdirname="$(echo "$newcheck" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
-        localdir="$(dirname "${localdirname}")"
-        localmoddate="$(stat --format=%Y "${localdirname}")"
-
-        [ -z "$remotehashraw" ] && remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
-        remotehash="$(echo "$remotehashraw" | grep "$file" | cut -f1 -d' ')"
-        remotedirname="$(echo "$remotehashraw" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
-        remotedir="$(dirname "${remotedirname}")"
-        remotemoddate="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" 'stat --format=%Y '"${remotedirname}"'')"
-
-        if [ "$oldhash" != "$newhash" -a "$oldhash" != "$remotehash" ]; then
-
-         logger -s --id=$$ "Es gibt einen Konflikt mit der Datei ${file}."
-         if [ "${file}" == "dates.rc" ]; then
-          echo "                                      local < = > remote"
-          diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
-         fi
-         echo "Dateien bitte manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
-
-        elif [ "$oldhash" == "$newhash" -a "$oldhash" == "$remotehash" ]; then
-
-         echo "${0}: Keine Veränderung an Datei ${file} festgestellt." | tee >(logger --id=$$)
-
-        # Bearbeitete Datei (newhash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        # aber die remote-Datei (remotehash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
-        # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
-        elif [ "$oldhash" == "$newhash" -a "$oldhash" != "$remotehash" -a "$remotemoddate" -ge "$localmoddate" ]; then
-         echo "Download der Datei ${file} vom Server ${sshuserhost} ..."
-         scp -pP "$sshport" -i "$sshkeyfile" "${sshuserhost}:/${remotedir}/${file}" "${localdir}/"
-         exitdown=$?
-         if [ "$exitdown" == 0 ]; then
-          checksum >"${pathofaddress}/.hash.log"
-          echo "${0}: Download der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
-         else
-          logger -s --id=$$ "Fehler beim Download der Datei ${file}."
-         fi
-
-        # Die remote-Datei (remotehash) ist die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        # aber die bearbeitete Datei (newhash) ist NICHT die gleiche, wie die, die zuletzt synchronisiert (oldhash) wurde.
-        # ... -ge ... ist wichtig, wenn die Datei address.lst.cpt mit -w geöffnet, aber nicht geändert
-        # wird, ändert sich der Hash-Wert, aber nicht der Zeitstempel.
-        elif [ "$oldhash" != "$newhash" -a "$oldhash" == "$remotehash" -a "$localmoddate" -ge "$remotemoddate" ]; then
-         echo "Upload der Datei ${file} zum Server ${sshuserhost} ..."
-         scp -pP "$sshport" -i "$sshkeyfile" "${localdir}/${file}" "${sshuserhost}:${remotedir}/"
-         exitup=$?
-         if [ "$exitup" == 0 ]; then
-          checksum >"${pathofaddress}/.hash.log"
-          echo "${0}: Upload der Datei ${file} wurde erfolgreich durchgeführt." | tee >(logger --id=$$)
-         else
-          logger -s --id=$$ "Fehler beim Upload der Datei ${file}."
-         fi
-
-        else
-
-         logger -s --id=$$ "Es gibt einen undefinierten Konflikt mit der Datei ${file}."
-         printf 'Dateiame                      : %-30s\n' "${file}"
-         printf 'Server                        : %-30s\n' "${sshuserhost#*@}"
-         printf "Alter Hash-Wert aus .hash.log : %-30s\n" "${oldhash}"
-         printf 'Hash-Wert der lokalen Datei   : %-30s\n' "${newhash}"
-         printf 'Hash-Wert der Server-Datei    : %-30s\n' "${remotehash}"
-         printf 'Zeitstempel der lokalen Datei : %-30d\n' "${localmoddate}"
-         printf 'Zeitstempel der Server-Datei  : %-30d\n' "${remotemoddate}"
-         exit 1
-
-        fi
-
-       done
-
-      # Ende der Verzweigung (ping)
-      fi
-
-     else
-      echo "Keine Synchronisation in ${conffile} eingerichtet."
-     fi
+  s) datefilecheck
+     filesync
 
      # Das shiften ist wichtig, damit ggf.die Namen für die Adressausgabe später korrekt ausgewertet werden.
      # Damit kann Option -s mit anderen Möglichkeiten kombiniert werden.
@@ -1424,28 +1433,22 @@ do
 
   w) gcalcheck
      datefilecheck
+     if [ "$modifysync" == "yes" ]; then
+      filesync
+      [ "$syncerr" == 1 ] && read -p "Ohne Synchronisation weiter mit [ENTER]. Abbruch mit [STRG]+[C]"
+     fi
      nano "$datefile"
+     [ "$modifysync" == "yes" ] && filesync
      exit
   ;;
 
   W) # Änderung der Adressdatei manuell vornehmen.
   
-     echo "Adressdatei wird gesichert ..."
-     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
-     ccdecrypt "${pathofaddress}/address.lst.cpt"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccdecrypt "${pathofaddress}/address.lst.cpt"
-     done
+     adrdecrypt
      
      nano "${pathofaddress}/address.lst"
      
-     echo "Datei wird wieder verschlüsselt ..."
-     ccencrypt "${pathofaddress}/address.lst"
-     while [ ! "$?" == "0" ]; do
-       echo "Bitte Passwort erneut eingeben:"
-       ccencrypt "${pathofaddress}/address.lst"
-     done
+     adrencrypt
      exit
   ;;
 
@@ -1463,13 +1466,7 @@ fi
 
 # Der komplette Content aus der Adressenliste wird in folgende Variable geschrieben.
 if [ "$modifymodus" == "yes" ]; then
- echo "Adressdatei wird gesichert und zur Bearbeitung entschlüsselt ..."
- cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
- ccdecrypt "${pathofaddress}/address.lst.cpt"
- while [ ! "$?" == "0" ]; do
-  echo "Bitte Passwort erneut eingeben:"
-  ccdecrypt "${pathofaddress}/address.lst.cpt"
- done
+ adrdecrypt
  adrlistcontent="$(cat ${pathofaddress}/address.lst)"
  # Hier wird parallel zu adrlistcontent eine weitere Variable mit gleichem Inhalt,
  # aber mit Zeilennummern definiert.
@@ -2050,14 +2047,7 @@ elif [ "$modifymodus" == "yes" -a "$vcardcheck" == "1" ]; then
 # Ende Verzweigung: "$modifymodus" == "yes" -a "$vcardcheck" == "1"
 fi
    
-if [ "$modifymodus" == "yes" ]; then
- echo "Die Adressdatei wird wieder verschlüsselt (bei Wunsch auch mit neuem Passwort) ..."
- ccencrypt "${pathofaddress}/address.lst"
- while [ ! "$?" == "0" ]; do
-  echo "Bitte Passwort erneut eingeben:"
-  ccencrypt "${pathofaddress}/address.lst"
- done
-fi
+[ "$modifymodus" == "yes" ] && adrencrypt
 
 # Ausgabe einer MessengerID als QR-Code auf der Standardausgabe.
 if [ "$exportmodus" == "qrcode" ]; then
