@@ -1,6 +1,6 @@
 # addressli
 **Address** book for **Li**nux command line  
-Eine kleine Adress- und Terminverwaltung für die Kommandozeile.
+Eine kleine Adress-, Termin- und Notizverwaltung für die Kommandozeile.
 
 **Vorbereitung**
 
@@ -16,15 +16,17 @@ Für die Synchronisation (`-s`) und die Optionen `-C` und `-r` muss die Datei `c
 
 Für die Terminverwaltung muss eine Profildatei `dates/dates.rc` angelegt werden. Auch hierfür ist im selben Ordner eine Datei mit vielen Beispielen vorhanden.
 
+Für die kleine Notizverwaltung muss lediglich die Datei `notes/jottings.txt` angelegt werden.
+
 **Synchronisation**
 
-Möchte man die Adressdaten und Termine mit einem Server (z.B. einem Raspi) synchronisieren, kann man sich entweder dieses Repository komplett auf den Server herunterladen oder man kopiert sich nur die relevanten Dateien (address.lst.cpt,dates.rc) in einen Ordner.
+Möchte man die Adressdaten, Termine und Notizen mit einem Server (z.B. einem Raspi) synchronisieren, kann man sich entweder dieses Repository komplett auf den Server herunterladen oder man kopiert sich nur die relevanten Dateien (address.lst.cpt, dates.rc und jottings.txt) in einen Ordner.
 
 Außerdem wird scp aus dem Paket `openssh` benötigt, welches jedoch bei den meisten Linux-Distributionen bereits installiert ist.  
 Für die Einrichtung von SSH gibt es sehr gute Anleitungen im Internet. Eine ist zum Beispiel:
 <https://wiki.ubuntuusers.de/SSH/>  
 
-Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien address.lst.cpt und dates.rc zwischen Client und Host 'von Hand' abgleichen und ggf. auch ein Backup der Daten machen.
+Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien address.lst.cpt, dates.rc und jottings.txt zwischen Client und Host 'von Hand' abgleichen und ggf. auch ein Backup der Daten machen.
 
 **Benachrichtigungen**
 

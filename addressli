@@ -120,6 +120,19 @@ Options:
 
 	ruft diese Hilfe auf.
 
+   -H
+
+	erstellt eine neue .hash.log-Datei in ${pathofaddress}
+
+   -j
+
+	zeigt den Inhalt der Notiz-Datei an.
+	Notizen müssen in die Datei notes/jottings.txt eingetragen werden.
+
+   -J
+
+	Öffnet die Datei notes/jottings.txt in Editor nano zur Bearbeitung.
+
    -l [argument]
    -l miss [name]
 
@@ -432,10 +445,20 @@ datefilecheck() {
      datefile="${pathofaddress}/dates/dates.rc"
     fi
 }
+notefilecheck() {
+    if [ ! -e "${pathofaddress}/notes/jottings.txt" ]; then
+     echo -e "Notiz-Datei ${pathofaddress}/notes/jottings.txt existiert nicht. Bitte erst anlegen.\nEine Beispieldatei finden Sie unter:\nhttps://raw.githubusercontent.com/CarstenHa/addressli/master/notes/example.txt\nSkript wird abgebrochen!"
+     exit 1
+    else
+     notefile="${pathofaddress}/notes/jottings.txt"
+    fi
+}
 checksum() {
     datefilecheck
+    notefilecheck
     md5sum "${pathofaddress}/address.lst.cpt" 2>/dev/null
     md5sum "$datefile" 2>/dev/null
+    md5sum "$notefile" 2>/dev/null
 }
 filesync() {
     if [ "$async" == "yes" ]; then
@@ -451,7 +474,7 @@ filesync() {
 
      else
 
-      listoffiles=(address.lst.cpt dates.rc)
+      listoffiles=(address.lst.cpt dates.rc jottings.txt)
 
       for file in ${listoffiles[@]}; do
 
@@ -463,7 +486,8 @@ filesync() {
        localdir="$(dirname "${localdirname}")"
        localmoddate="$(stat --format=%Y "${localdirname}")"
 
-       [ -z "$remotehashraw" ] && remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null")"
+       # Prüfsummen der Dateien auf dem Server werden ermittelt.
+       [ -z "$remotehashraw" ] && remotehashraw="$(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "md5sum ${remoteaddrfile} 2>/dev/null; md5sum ${remotedatefile} 2>/dev/null; md5sum ${remotenotefile} 2>/dev/null")"
        remotehash="$(echo "$remotehashraw" | grep "$file" | cut -f1 -d' ')"
        remotedirname="$(echo "$remotehashraw" | grep "$file" | tr -s ' ' | cut -f2 -d' ')"
        remotedir="$(dirname "${remotedirname}")"
@@ -475,6 +499,9 @@ filesync() {
         if [ "${file}" == "dates.rc" ]; then
          echo "                                      local < = > remote"
          diff -y --width=100 --suppress-common-lines "${pathofaddress}/dates/dates.rc" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotedatefile}")
+        elif [ "${file}" == "jottings.txt" ]; then
+         echo "                                      local < = > remote"
+         diff -y --width=100 --suppress-common-lines "${pathofaddress}/notes/jottings.txt" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotenotefile}")
         fi
         echo "Dateien bitte manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
         syncerr="1"
@@ -565,7 +592,7 @@ adrencrypt() {
 
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:E:hl:m:n:r:swW opt
+while getopts cCdDe:E:hHjJl:m:n:r:swW opt
 
 do 
  case $opt in
@@ -925,6 +952,30 @@ do
   ;;
 
   h) usage
+     exit
+  ;;
+
+  H) # Neue .hash.log-Datei erstellen.
+     if [ -e "${pathofaddress}/.hash.log" ]; then
+      echo "Sicherung der alten Datei wird erstellt."
+      cp -iv "${pathofaddress}/.hash.log" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_hash.log"
+     fi
+     checksum >"${pathofaddress}/.hash.log" && echo "Neue Prüfsummendatei ${pathofaddress}/.hash.log wurde erfolgreich erstellt."
+     exit
+  ;;
+
+  j) notefilecheck
+     cat "$notefile"
+     exit
+  ;;
+
+  J) notefilecheck
+     if [ "$modifysync" == "yes" ]; then
+      filesync
+      [ "$syncerr" == 1 ] && read -p "Ohne Synchronisation weiter mit [ENTER]. Abbruch mit [STRG]+[C]"
+     fi
+     nano "$notefile"
+     [ "$modifysync" == "yes" ] && filesync
      exit
   ;;
 
