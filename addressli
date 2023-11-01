@@ -159,6 +159,7 @@ Options:
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
 	briar   - Nimmt einen neuen Briar-Datensatz auf.
 	jabber  - Nimmt einen neuen Jabber-Datensatz auf.
+	jami    - Nimmt einen neuen Jami-Datensatz auf.
 	tox     - Nimmt einen neuen Tox-Datensatz auf.
 	vcf     - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
 	          Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
@@ -418,7 +419,7 @@ adrprint1() {
     [ -n "$con_website_work" -o "$showlabel" == "yes" ] && printf 'Homepage             : %0s\n' "$con_website_work"
     [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
 
-    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$toxcontent" ]); then
+    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$toxcontent" ]); then
      let printcounter++
      echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
      [ "$showlabel" == "yes" ] && echo "MessengerIDs; etc."
@@ -1051,7 +1052,7 @@ do
       nachname="$1"
       vorname="$2"
 
-      messidlist="$(sed -n '/^BEGIN:BRIAR\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
+      messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
 
       # Art der IDs und die Position (Zeilennummern) in Adressdatendatei wird in Liste geschrieben.
       while read -r checkid; do
@@ -1166,6 +1167,25 @@ do
        read -p "Bitte XMPP-Server eingeben: " jidserver
       done
 
+     elif [ "$OPTARG" == "jami" ]; then
+
+      while [ -z "$jaminachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " jaminachname
+      done
+      while [ -z "$jamivorname" ]; do
+       read -p "Bitte Vornamen eingeben: " jamivorname
+      done
+      read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " jamiaccountname
+      while [ -n "$(echo "$jamiaccountname" | egrep -o '[:;]*')" ]; do
+       read -p "Bitte Account-Namen (frei wählbar aber keine : oder ;) eingeben: " jamiaccountname
+      done
+      read -p "Bitte JamiID eingeben (40 Zeichen): " newjamiid
+
+      while [ ! "$(printf "$newjamiid" | wc -m)" == "40" ]; do
+       echo "JamiID ist keine 40 Zeichen lang."
+       read -p "Bitte JamiID erneut eingeben (40 Zeichen): " newjamiid
+      done
+
      elif [ "$OPTARG" == "tox" ]; then
 
       while [ -z "$toxnachname" ]; do
@@ -1181,7 +1201,7 @@ do
       read -p "Bitte ToxID eingeben (76 Zeichen): " newtoxid
 
       while [ ! "$(printf "$newtoxid" | wc -m)" == "76" ]; do
-       echo "ToxID ist keine 76'Zeichen lang."
+       echo "ToxID ist keine 76 Zeichen lang."
        read -p "Bitte ToxID erneut eingeben (76 Zeichen): " newtoxid
       done
      
@@ -1212,6 +1232,11 @@ do
 
       jidnewline="$(echo "${jidnachname}:${jidvorname}:${jiduser}:${jidserver}")"
       sed -i 's/\(END:XMPP\)/'"$jidnewline"'\n\1/' "${pathofaddress}/address.lst"
+
+     elif [ "$OPTARG" == "jami" ]; then
+
+      jaminewline="$(echo "${jaminachname}:${jamivorname}:${jamiaccountname}:${newjamiid}")"
+      sed -i 's/\(END:JAMI\)/'"$jaminewline"'\n\1/' "${pathofaddress}/address.lst"
 
      elif [ "$OPTARG" == "tox" ]; then
 
@@ -1563,7 +1588,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    
   # Der ggf. ermittelte Vorname wird über die vcard ermittelt.
   # Es muss nämlich in der Adressenliste immer eine vcard angelegt werden, auch wenn z.B. nur eine Briar-Adresse vorhanden ist.
-  # Achtung: Ansonsten werden Briar-/Jabber-/Tox-Adressen nicht mit ausgewertet!
+  # Achtung: Ansonsten werden Briar-/Jabber-/Jami-/Tox-Adressen nicht mit ausgewertet!
   #          Außerdem sollten alle grep-Befehle mit -i ausgeführt werden (ignoriert Groß/Kleinschreibung):
   if [ "$1" == "*" ]; then
    vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:')"
@@ -1576,7 +1601,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    vorname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f2 -d';')"
   fi
   
-  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Jabber-/Toxadressen gesucht.
+  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Jabber-/Jami-/Toxadressen gesucht.
   if [ -n "$vcfsinglecontentline" ]; then
   
    let vcardcheck++
@@ -1584,6 +1609,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    # Variablen werden definiert
    briarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    jabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+   jamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    toxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
 
    adr_home_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=home;')"
@@ -1693,6 +1719,28 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
        let messcounter++
        jabdid="$(echo "$jabline" | cut -d':' -f3,4 | sed 's/:/@/')"
        messprint+="${messcounter};${jabdid};Jabber;${jabservername};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+
+    # *** JamiIDs werden verarbeitet ***
+    if [ -n "$jamicontent" ]; then
+     anzjamiid="$(echo "$jamicontent" | wc -l)"
+     for jaid in $(seq 1 "$anzjamiid"); do
+      jamiline="$(echo "$jamicontent" | sed -n ''${jaid}'p')"
+      jaminame="$(echo "$jamiline" | cut -d':' -f3)"
+      jamiid="$(echo "$jamiline" | cut -d':' -f4)"
+      echo "JamiID ${jaid}             : ${jamiid} (${jaminame})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nJamiID ('"$jaminame"'): '"$jamiid"'/')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:JamiID ('"$jaminame"'): '"$jamiid"'\n\1/')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       let messcounter++
+       jamidid="$(echo "$jamiline" | cut -d':' -f4)"
+       messprint+="${messcounter};${jamidid};Jami;${jaminame};${nachname^};${vorname^}"$'\n'
       fi
      done
     fi
@@ -2168,9 +2216,10 @@ if [ "$vcardcheck" == "0" ]; then
   
   checkbriarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -ci '^'"$nachname"':')"
   checkjabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -ci '^'"$nachname"':')"
+  checkjamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -ci '^'"$nachname"':')"
   checktoxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -ci '^'"$nachname"':')"
-  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
-   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
+  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checkjamicontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
+   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs, ${checkjamicontent} JamiIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
    echo "Bitte erst einen passenden VCARD-Datensatz erstellen mit $0 -n vcf"
   fi
   

@@ -13,6 +13,12 @@ END:VCF
 BEGIN:BRIAR
 END:BRIAR
 
+# JamiIDs
+# Beispiel: Nachname:Vorname:Accountname:40stellige_JamiID
+# Neue Adressen können mit der Option -n jami aufgenommen werden (siehe auch address -h).
+BEGIN:JAMI
+END:JAMI
+
 # JabberIDs
 # Beispiel: User:XmppServer
 # Neue Adressen können mit der Option -n jabber aufgenommen werden (siehe auch address -h).
