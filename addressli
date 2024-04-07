@@ -574,19 +574,23 @@ adrdecrypt() {
     fi
     echo "Adressdatei wird gesichert und zur Bearbeitung entschlüsselt ..."
     cp -iv "${pathofaddress}/address.lst.cpt" "${pathofaddress}/backupfiles/`date +%Y%m%d%H%M%S`_address.lst.cpt"
-    ccdecrypt "${pathofaddress}/address.lst.cpt"
+    read -sp "Bitte Passwort eingeben: " mysecpassw
+    export mysecpassw
+    ccdecrypt -E mysecpassw "${pathofaddress}/address.lst.cpt"
     while [ ! "$?" == "0" ]; do
-     echo "Bitte Passwort erneut eingeben:"
-     ccdecrypt "${pathofaddress}/address.lst.cpt"
+     read -sp "Fehler beim Entschlüsseln der Adressdatei. Bitte Passwort erneut eingeben: " mysecpassw
+     export mysecpassw
+     ccdecrypt -E mysecpassw "${pathofaddress}/address.lst.cpt"
     done
 }
 adrencrypt() {
-    echo "Die Adressdatei wird wieder verschlüsselt (bei Wunsch auch mit neuem Passwort) ..."
-    ccencrypt "${pathofaddress}/address.lst"
-    while [ ! "$?" == "0" ]; do
-     echo "Bitte Passwort erneut eingeben:"
-     ccencrypt "${pathofaddress}/address.lst"
-    done
+    echo "Die Adressdatei wird wieder verschlüsselt ..."
+    ccencrypt -E mysecpassw "${pathofaddress}/address.lst"
+    if [ ! "$?" == "0" ]; then
+     echo "Fehler beim Verschlüsseln der Adressdatei. Programm wird abgebrochen!"
+     echo "Datei bitte manuell verschlüsseln mit: ccencrypt ${pathofaddress}/address.lst"
+     exit 1
+    fi
     [ "$modifysync" == "yes" ] && filesync
 }
 # ********** Funktionen - Ende  **********
@@ -2226,6 +2230,8 @@ if [ "$vcardcheck" == "0" ]; then
 fi
  
 echo ""
-# Inhalt löschen
+
+# Inhalt und Passwort löschen
 unset adrlistcontent
+unset mysecpassw
 
