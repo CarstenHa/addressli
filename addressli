@@ -1570,8 +1570,6 @@ if [ -z "$adrlistcontent" ]; then
 fi
 
 # Variablen definieren
-briarscheme="briar://"
-
 nachname="$1"
 vorname="$2"
 
