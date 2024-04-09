@@ -2232,4 +2232,10 @@ echo ""
 # Inhalt und Passwort löschen
 unset adrlistcontent
 unset mysecpassw
-
+# Backupordner aufräumen
+if [ "$maxbackupfiles" -ge 0 ]; then
+ dellist1="$(ls -tQ "${pathofaddress}"/backupfiles/*_address.lst.cpt 2>/dev/null | sed -n ''$(("$maxbackupfiles" + 1))',$p')"
+ dellist2="$(ls -tQ "${pathofaddress}"/backupfiles/*_hash.log 2>/dev/null | sed -n ''$(("$maxbackupfiles" + 1))',$p')"
+ [ -n "$dellist1" ] && xargs rm <<<"$dellist1"
+ [ -n "$dellist2" ] && xargs rm <<<"$dellist2"
+fi
