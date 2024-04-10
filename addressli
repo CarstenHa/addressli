@@ -1710,12 +1710,12 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
       jabline="$(echo "$jabbercontent" | sed -n ''${jid}'p')"
       jabuser="$(echo "$jabline" | cut -d':' -f3)"
       jabservername="$(echo "$jabline" | cut -d':' -f4)"
-      echo "JabberID ${jid}           : xmpp:${jabuser}@${jabservername} (${jabservername})"
+      echo "JabberID ${jid}           : ${jabuser}@${jabservername} (${jabservername})"
       if [ "$exportmodus" == "vcfformat" ]; then
        if [ -n "$sonstiges" ]; then
-        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nJabberID ('"$jabservername"'): xmpp:'"${jabuser}"'@'"${jabservername}"'/')"
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nJabberID ('"$jabservername"'): '"${jabuser}"'@'"${jabservername}"'/')"
        else
-        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:JabberID ('"$jabservername"'): xmpp:'"${jabuser}"'@'"${jabservername}"'\n\1/')"
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:JabberID ('"$jabservername"'): '"${jabuser}"'@'"${jabservername}"'\n\1/')"
        fi
       elif [ "$exportmodus" == "qrcode" ]; then
        let messcounter++
