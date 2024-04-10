@@ -14,6 +14,9 @@
 # 5. Eintrag in printf-Bereich (Ausgabe auf Bildschirm)
 # 6. if-Verzweigung ("$modifytype") hinzufügen inkl. Quoting von /
 
+# Wenn ein neuer Messenger aufgenommen werden soll, sind die entsprechenden Bereiche im Quellcode markiert mit:
+# MessDef
+
 # Mit readlink kann man den tatsächlichen Speicherort des Skriptes ermitteln.
 pathofaddress="$(dirname $(readlink -f ${0}))"
 
@@ -49,6 +52,7 @@ if [ -z "$(type -p qrencode)" ]; then
 fi
 
 # ********** Funktionen - Anfang  **********
+# MessDef1 (-n)
 usage() {
 cat <<EOU
 
@@ -419,6 +423,7 @@ adrprint1() {
     [ -n "$con_website_work" -o "$showlabel" == "yes" ] && printf 'Homepage             : %0s\n' "$con_website_work"
     [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
 
+    # MessDef2
     if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$toxcontent" ]); then
      let printcounter++
      echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
@@ -1056,6 +1061,7 @@ do
       nachname="$1"
       vorname="$2"
 
+      # MessDef3
       messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
 
       # Art der IDs und die Position (Zeilennummern) in Adressdatendatei wird in Liste geschrieben.
@@ -1139,7 +1145,8 @@ do
       vcfcard="$(echo "$vcfcard" | sed 's/"\\n/"/g;s/\\n"/"/g;s/\\n *"/"/g')"
       # Zum debuggen
       #echo "$vcfcard" && exit
-      
+
+     # MessDef4
      elif [ "$OPTARG" == "briar" ]; then
 
       while [ -z "$briarnachname" ]; do
@@ -1226,7 +1233,8 @@ do
       echo "$seiteteil1" >"${pathofaddress}/address.lst"
       echo "$vcfcard" >>"${pathofaddress}/address.lst"
       echo "$seiteteil2" >>"${pathofaddress}/address.lst"
-      
+
+     # MessDef5
      elif [ "$OPTARG" == "briar" ]; then
 
       briarnewline="$(echo "${briarnachname}:${briarvorname}:${briaraccountname}:${briaridwithouts}")"
@@ -1587,10 +1595,10 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
   if [ "$modifymodus" == "yes" -a "$vcardcheck" == "0" ]; then
    vcfsinglecontentnr="$(echo "$vcfcontentnr" | sed -n '1,/END:VCARD/p')"
   fi
-   
+
   # Der ggf. ermittelte Vorname wird über die vcard ermittelt.
   # Es muss nämlich in der Adressenliste immer eine vcard angelegt werden, auch wenn z.B. nur eine Briar-Adresse vorhanden ist.
-  # Achtung: Ansonsten werden Briar-/Jabber-/Jami-/Tox-Adressen nicht mit ausgewertet!
+  # Achtung: Ansonsten werden Messenger-Adressen (Briar, etc.) nicht mit ausgewertet!
   #          Außerdem sollten alle grep-Befehle mit -i ausgeführt werden (ignoriert Groß/Kleinschreibung):
   if [ "$1" == "*" ]; then
    vcfsinglecontentline="$(echo "$vcfsinglecontent" | grep -i '^N:')"
@@ -1603,11 +1611,12 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    vorname="$(echo "$vcfsinglecontentline" | sed -n 's/^N://p' | cut -f2 -d';')"
   fi
   
-  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Briar-/Jabber-/Jami-/Toxadressen gesucht.
+  # Bei Fund mit dem entsprechenden Namen in Vcard wird nach Messenger-Adressen (Briar, etc) gesucht.
   if [ -n "$vcfsinglecontentline" ]; then
   
    let vcardcheck++
-   
+
+   # MessDef6
    # Variablen werden definiert
    briarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    jabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -i '^'"$nachname"':'"$vorname"'')"
@@ -1679,8 +1688,8 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
      onlylabel2="$(adrprint1)"
     fi
     adrprint1
-    
-   
+
+    # MessDef7
     # *** BriarIDs werden verarbeitet ***
     if [ -n "$briarcontent" ]; then
      anzbriarid="$(echo "$briarcontent" | wc -l)"
@@ -2211,7 +2220,8 @@ if [ "$exportmodus" == "vcfformat" -a "$vcftype" == "qr" ] || [ "$exportmodus" =
  fi
  
 fi
- 
+
+# MessDef8
 if [ "$vcardcheck" == "0" ]; then
  
   echo "Es konnte keine Vcard mit dem Namen ${*} ermittelt werden."
