@@ -18,6 +18,10 @@ Für die Terminverwaltung muss eine Profildatei `dates/dates.rc` angelegt werden
 
 Für die kleine Notizverwaltung muss lediglich die Datei `notes/jottings.txt` angelegt werden.
 
+Außerdem ist es sehr praktisch, sich eine symbolische Verknüpfung in einem lokalen PATH-Ordner anzulegen:  
+`ln -s "${PWD}"/addressli "${HOME}"/.local/bin/addressli`  
+Danach ist addressli von jedem lokalen Ordner aufrufbar.
+
 **Synchronisation**
 
 Möchte man die Adressdaten, Termine und Notizen mit einem Server (z.B. einem Raspi) synchronisieren, kann man sich entweder dieses Repository komplett auf den Server herunterladen oder man kopiert sich nur die relevanten Dateien (address.lst.cpt, dates.rc und jottings.txt) in einen Ordner.
@@ -80,6 +84,7 @@ Die Hilfe ruft man mit der Option `-h` auf.
 Die Nutzung ist denkbar einfach. Zur Ausgabe einer Adresse braucht man nur den Nachnamen und ggf. den Vornamen angeben. Also:
 
     addressli Nachname
+
 oder:
 
     addressli Nachname Vorname
