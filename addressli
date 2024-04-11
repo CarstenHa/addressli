@@ -161,12 +161,13 @@ Options:
 
 	nimmt einen neuen Datensatz in die Adressdatei auf.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
-	briar   - Nimmt einen neuen Briar-Datensatz auf.
-	jabber  - Nimmt einen neuen Jabber-Datensatz auf.
-	jami    - Nimmt einen neuen Jami-Datensatz auf.
-	tox     - Nimmt einen neuen Tox-Datensatz auf.
-	vcf     - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
-	          Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
+	briar    - Nimmt einen neuen Briar-Datensatz auf.
+	jabber   - Nimmt einen neuen Jabber-Datensatz auf.
+	jami     - Nimmt einen neuen Jami-Datensatz auf.
+	mastodon - Nimmt einen neuen Mastodon-Datensatz auf.
+	tox      - Nimmt einen neuen Tox-Datensatz auf.
+	vcf      - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
+	           Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
 
    -r [argument]
 
@@ -424,7 +425,7 @@ adrprint1() {
     [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
 
     # MessDef2
-    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$toxcontent" ]); then
+    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$mastodoncontent" -o -n "$toxcontent" ]); then
      let printcounter++
      echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
      [ "$showlabel" == "yes" ] && echo "MessengerIDs; etc."
@@ -509,7 +510,8 @@ filesync() {
          echo "                                      local < = > remote"
          diff -y --width=100 --suppress-common-lines "${pathofaddress}/notes/jottings.txt" <(ssh -p "$sshport" -i "$sshkeyfile" "$sshuserhost" "cat ${remotenotefile}")
         fi
-        echo "Dateien bitte manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
+        echo "Problemlösungen:"
+        echo -e "Option -s ausführen.\nDateien manuell ändern und abgleichen und anschließend ggf. die Datei .hash.log löschen."
         syncerr="1"
 
        elif [ "$oldhash" == "$newhash" -a "$oldhash" == "$remotehash" ]; then
@@ -1062,7 +1064,7 @@ do
       vorname="$2"
 
       # MessDef3
-      messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
+      messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|MASTODON\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
 
       # Art der IDs und die Position (Zeilennummern) in Adressdatendatei wird in Liste geschrieben.
       while read -r checkid; do
@@ -1116,6 +1118,32 @@ do
   ;;
  
   n) newdata="yes"
+
+     # HTTPS-Servercheck für bestimmte MessengerIDs (z.B. Mastodon)
+     wscheck() {
+       while true; do
+        curl -L --silent --head --max-time 30 --connect-timeout 0 "https://${servercheck}"
+        seccheckexit="$?"
+        if [ "$seccheckexit" == 0 ]; then
+         httpscheck="yes"
+         break
+        else
+         echo "HTTPS-Servercheck war nicht erfolgreich (curl Exitcode: ${seccheckexit})."
+         read -p "Vorgang [w]iederholen oder [f]ortfahren, ohne das das Schema in Adressdatei eingetragen wird? " wscheckabfrage
+         case "$wscheckabfrage" in
+          w|W) continue
+          ;;
+          f|F) echo "Schema wird nicht in Adressdatei eingetragen."
+               httpscheck="no"
+              break
+          ;;
+          *) echo "Fehlerhafte Eingabe!"
+          ;;
+         esac
+        fi
+       done
+     }
+
      if [ "$OPTARG" == "vcf" ]; then
      
       # Eingabe eines neuen .vcf-Datensatzes
@@ -1197,6 +1225,24 @@ do
        read -p "Bitte JamiID erneut eingeben (40 Zeichen): " newjamiid
       done
 
+     elif [ "$OPTARG" == "mastodon" ]; then
+
+      while [ -z "$mastonachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " mastonachname
+      done
+      while [ -z "$mastovorname" ]; do
+       read -p "Bitte Vornamen eingeben: " mastovorname
+      done
+      while [ -z "$mastouser" ] || [[ "$mastouser" =~ ^@ || "$mastouser" =~ @$ ]]; do
+       read -p "Bitte Mastodon-User eingeben (ohne Präfix @): " mastouser
+      done
+      while [ -z "$mastoserver" ] || [[ "$mastoserver" =~ ^@ || "$mastoserver" =~ @$ || "$mastoserver" =~ ^http ]]; do
+       read -p "Bitte Mastodon-Server eingeben (ohne Präfix @ oder http(s): " mastoserver
+      done
+      # Servercheck
+      servercheck="$mastoserver"
+      wscheck
+
      elif [ "$OPTARG" == "tox" ]; then
 
       while [ -z "$toxnachname" ]; do
@@ -1249,6 +1295,11 @@ do
 
       jaminewline="$(echo "${jaminachname}:${jamivorname}:${jamiaccountname}:${newjamiid}")"
       sed -i 's/\(END:JAMI\)/'"$jaminewline"'\n\1/' "${pathofaddress}/address.lst"
+
+    elif [ "$OPTARG" == "mastodon" ]; then
+
+      mastonewline="$(echo "${mastonachname}:${mastovorname}:${mastouser}:${mastoserver}:${httpscheck}")"
+      sed -i 's/\(END:MASTODON\)/'"$mastonewline"'\n\1/' "${pathofaddress}/address.lst"
 
      elif [ "$OPTARG" == "tox" ]; then
 
@@ -1621,6 +1672,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    briarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    jabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    jamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+   mastodoncontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MASTODON/,/END:MASTODON/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    toxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
 
    adr_home_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=home;')"
@@ -1752,6 +1804,36 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
        let messcounter++
        jamidid="$(echo "$jamiline" | cut -d':' -f4)"
        messprint+="${messcounter};${jamidid};Jami;${jaminame};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+
+    # *** MastodonIDs werden verarbeitet ***
+    if [ -n "$mastodoncontent" ]; then
+     anzmastoid="$(echo "$mastodoncontent" | wc -l)"
+     for mastoid in $(seq 1 "$anzmastoid"); do
+      masline="$(echo "$mastodoncontent" | sed -n ''${mastoid}'p')"
+      masuser="$(echo "$masline" | cut -d':' -f3)"
+      masservername="$(echo "$masline" | cut -d':' -f4)"
+      # yes/no-Wert der HTTPS-Überprüfung (mit Funktion wscheck) beim Anlegen des Datensatzes.
+      massslcheck="$(echo "$masline" | cut -d':' -f5)"
+      [ "$massslcheck" == "yes" ] && scheme="https://"
+      echo "MastodonID ${mastoid}         : @${masuser}@${masservername} (${scheme}${masservername}/@${masuser})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's%\(^NOTE:.*$\)%\1\\nMastodonID ('"$masservername"'): @'"${masuser}"'@'"${masservername}"' ('"${scheme}${masservername}"'/@'"${masuser}"')%')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's%\(^END:VCARD\)%NOTE:MastodonID ('"$masservername"'): @'"${masuser}"'@'"${masservername}"' ('"${scheme}${masservername}"'/@'"${masuser}"')\n\1%')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       # Mastodon-Link (https://example.com/@user)
+       let messcounter++
+       masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's%\(.*\):\(.*\)%'"$scheme"'\2@\1%')"
+       messprint+="${messcounter};${masdid};Mastodon (Link);${masservername};${nachname^};${vorname^}"$'\n'
+       # Mastodon-Profil (@user@example.com)
+       let messcounter++
+       masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's/^\|:/@/g')"
+       messprint+="${messcounter};${masdid};Mastodon (Profil);${masservername};${nachname^};${vorname^}"$'\n'
       fi
      done
     fi
@@ -2173,15 +2255,15 @@ if [ "$exportmodus" == "qrcode" ]; then
  echo -e '\n                    *** Export einer MessengerID als QR-Code ***'
  #printf -- "─%.0s" $(seq $(tput cols))
  # Bildschirm-Ausgabe
- printf 'Num ID                                                                               Messeng. Mess-Name  Nachname   Vorname\n' 
+ printf 'Num ID                                                                               Messenger          Mess-Name  Nachname   Vorname\n'
  #printf -- "─%.0s" $(seq $(tput cols))
  while read -r line; do
-  [ -n "$line" ] && printf '%3d %-80s %-8.8s %-10.10s %-10.10s %-10.10s\n' "$(echo "$line" | cut -f1 -d';')" \
-                                                                           "$(echo "$line" | cut -f2 -d';')" \
-                                                                           "$(echo "$line" | cut -f3 -d';')" \
-                                                                           "$(echo "$line" | cut -f4 -d';')" \
-                                                                           "$(echo "$line" | cut -f5 -d';')" \
-                                                                           "$(echo "$line" | cut -f6 -d';')"
+  [ -n "$line" ] && printf '%3d %-80s %-18.18s %-10.10s %-10.10s %-10.10s\n' "$(echo "$line" | cut -f1 -d';')" \
+                                                                             "$(echo "$line" | cut -f2 -d';')" \
+                                                                             "$(echo "$line" | cut -f3 -d';')" \
+                                                                             "$(echo "$line" | cut -f4 -d';')" \
+                                                                             "$(echo "$line" | cut -f5 -d';')" \
+                                                                             "$(echo "$line" | cut -f6 -d';')"
  done <<<"$messprint"
  #printf -- "─%.0s" $(seq $(tput cols))
  echo ""
@@ -2229,9 +2311,10 @@ if [ "$vcardcheck" == "0" ]; then
   checkbriarcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:BRIAR/,/END:BRIAR/p' | grep -ci '^'"$nachname"':')"
   checkjabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -ci '^'"$nachname"':')"
   checkjamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -ci '^'"$nachname"':')"
+  checkmastodoncontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MASTODON/,/END:MASTODON/p' | grep -ci '^'"$nachname"':')"
   checktoxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -ci '^'"$nachname"':')"
-  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checkjamicontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
-   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs, ${checkjamicontent} JamiIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
+  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checkjamicontent" -gt "0" -o "$checkmastodoncontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
+   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs, ${checkjamicontent} JamiIDs, ${checkmastodoncontent} MastodonIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
    echo "Bitte erst einen passenden VCARD-Datensatz erstellen mit $0 -n vcf"
   fi
   

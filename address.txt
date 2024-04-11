@@ -2,31 +2,37 @@
 # Diese Datei muss umbenannt werden in address.lst
 # Achtung! Wenn Briar,Tox usw. definiert wurden, muss auch immer eine VCARD angelegt werden.
 # Ansonsten greift die Suche mit 'addressli' nicht richtig!
-# Neue Adressen können mit der Option -n vcf aufgenommen werden (siehe auch address -h).
+# Neue Adressen können mit der Option -n vcf aufgenommen werden (siehe auch addressli -h).
 # Nur für vCARD 4.0
 BEGIN:VCF
 END:VCF
 
 # BriarID ohne Scheme (briar://), wird später eingefügt. 
 # Beispiel: Nachname:Vorname:Accountname:BriarID
-# Neue Adressen können mit der Option -n briar aufgenommen werden (siehe auch address -h).
+# Neue Adressen können mit der Option -n briar aufgenommen werden (siehe auch addressli -h).
 BEGIN:BRIAR
 END:BRIAR
 
 # JamiIDs
 # Beispiel: Nachname:Vorname:Accountname:40stellige_JamiID
-# Neue Adressen können mit der Option -n jami aufgenommen werden (siehe auch address -h).
+# Neue Adressen können mit der Option -n jami aufgenommen werden (siehe auch addressli -h).
 BEGIN:JAMI
 END:JAMI
 
 # JabberIDs
-# Beispiel: User:XmppServer
-# Neue Adressen können mit der Option -n jabber aufgenommen werden (siehe auch address -h).
+# Beispiel: Nachname:Vorname:User:XmppServer
+# Neue Adressen können mit der Option -n jabber aufgenommen werden (siehe auch addressli -h).
 BEGIN:XMPP
 END:XMPP
 
+# MastodonIDs
+# Beispiel: Nachname:Vorname:User:MastodonServer:yes (wenn https; sonst no)
+# Neue Adressen können mit der Option -n mastodon aufgenommen werden (siehe auch addressli -h).
+BEGIN:MASTODON
+END:MASTODON
+
 # ToxIDs
 # Beispiel: Nachname:Vorname:Accountname:76stellige_ToxID
-# Neue Adressen können mit der Option -n tox aufgenommen werden (siehe auch address -h).
+# Neue Adressen können mit der Option -n tox aufgenommen werden (siehe auch addressli -h).
 BEGIN:TOX
 END:TOX
