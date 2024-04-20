@@ -193,6 +193,15 @@ Options:
 	Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien zwischen Client
 	und Host 'von Hand' abgleichen und ggf. ein Backup der Daten machen.
 
+   -u [argument]
+
+	Daten der Schulferien werden heruntergeladen/aktualisiert.
+	Eines der folgenden Länderkürzel muss zusätzlich mit angegeben werden:
+	at  - Österreich
+	ch  - Schweiz
+	de  - Deutschland
+	all - Alle oben aufgeführten Länder
+
    -w
 
 	Öffnet die Datei dates/dates.rc in Editor nano zur Bearbeitung.
@@ -600,11 +609,43 @@ adrencrypt() {
     fi
     [ "$modifysync" == "yes" ] && filesync
 }
+holiupdate() {
+    # Ländercodes müssen ISO-3166-1 bwz. ISO-3166-2 entsprechen.
+    unset dlerror
+    echo "Daten der Schulferien werden geprüft und ggf. heruntergeladen ..."
+    repourl="https://github.com/openpotato/openholidaysapi.data"
+    wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays/" "${repourl}/raw/develop/LICENSE" && \
+    licensepath="${pathofaddress}/holidays/LICENSE" || dlerror="yes"
+    if [ "$dlerror" == "yes" ]; then
+     echo "Fehler beim Herunterladen der Daten. Skript wird abgebrochen."
+     exit 1
+    else
+     echo -e "Quelle : ${repourl}\n         Lizenz siehe ${licensepath}" >"${pathofaddress}/holidays/SOURCE"
+    fi
+    for country in ${countrylist[@]}; do
+     unset hfilename
+     [ ! -d "${pathofaddress}/holidays/${country}" ] && mkdir -v "${pathofaddress}/holidays/${country}"
+     if [ "$country" == "at" ]; then
+      hfilename="holidays.school.csv"
+     elif [ "$country" == "ch" ]; then
+      hfilename="holidays.school.{ag,ai,ar,be,bl,bs,fr,ge,gl,gr,ju,lu,ne,nw,ow,sg,sh,so,sz,tg,ti,ur,vd,vs,zg,zh}.csv"
+     elif [ "$country" == "de" ]; then
+      hfilename="holidays.school.{bb,be,bw,by,hb,he,hh,mv,ni,nw,rp,sh,sl,sn,st,th}.csv"
+     fi
+     if [ -n "$hfilename" ]; then
+      wgetcomm="wget -Nc -t 3 --progress=bar -P ${pathofaddress}/holidays/${country}"
+      urlpath="${repourl}/raw/develop/src/${country}/holidays/${hfilename}"
+      source <(echo "${wgetcomm} ${urlpath} || dlerror=yes")
+      echo "Stand  : $(date '+%d.%m.%Y')" >"${pathofaddress}/holidays/${country}/timestamp.log"
+     fi
+    done
+    [ "$dlerror" == "yes" ] && echo "Es gab Probleme beim Herunterladen der Daten."
+}
 # ********** Funktionen - Ende  **********
 
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:E:hHjJl:m:n:r:swW opt
+while getopts cCdDe:E:hHjJl:m:n:r:su:wW opt
 
 do 
  case $opt in
@@ -1572,6 +1613,27 @@ do
   s) datefilecheck
      filesync
 
+     # Das shiften ist wichtig, damit ggf.die Namen für die Adressausgabe später korrekt ausgewertet werden.
+     # Damit kann Option -s mit anderen Möglichkeiten kombiniert werden.
+     shift $(($OPTIND - 1))
+     # Wenn keine weiteren Argumente nach Option -s definiert sind, wird Skript beendet.
+     [ -z "$*" ] && exit
+  ;;
+
+  u) kuerzel="${OPTARG,,}"
+     if [ "$kuerzel" == "at" ]; then
+      countrylist=(at)
+     elif [ "$kuerzel" == "ch" ]; then
+      countrylist=(ch)
+     elif [ "$kuerzel" == "de" ]; then
+      countrylist=(de)
+     elif [ "$kuerzel" == "all" ]; then
+      countrylist=(at ch de)
+     else
+      echo "Ungültige Angabe (${kuerzel}). Skript wird abgebrochen."
+      exit 1
+     fi
+     holiupdate
      # Das shiften ist wichtig, damit ggf.die Namen für die Adressausgabe später korrekt ausgewertet werden.
      # Damit kann Option -s mit anderen Möglichkeiten kombiniert werden.
      shift $(($OPTIND - 1))
