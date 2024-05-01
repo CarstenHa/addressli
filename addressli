@@ -2466,7 +2466,11 @@ elif [ "$modifymodus" == "yes" -a "$vcardcheck" == "1" ]; then
   linenumber="$(echo "$vcfsinglecontentnr" | sed -n 's/\(^[[:digit:]]*\).*END:VCARD.*/\1/p')"
   sed -i ''$(($linenumber - 1))'s/\(END:VCARD\)/REV:'"$(date +%Y%m%dT%H%M%SZ)"'\n\1/' "${pathofaddress}/address.lst"
  fi
- 
+
+elif [ "$modifymodus" == "yes" -a "$vcardcheck" -gt "1" ]; then
+
+  echo -e "\nEs wurden ${vcardcheck} Einträge gefunden. Bitte Suche mit einem Vornamen spezifizieren."
+
 # Ende Verzweigung: "$modifymodus" == "yes" -a "$vcardcheck" == "1"
 fi
    
