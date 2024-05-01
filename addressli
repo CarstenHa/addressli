@@ -1830,7 +1830,7 @@ fi
 
 if [ -z "$1" ]; then
  usage
- echo -e "\nBitte mindestens einen Nachnamen im ersten Argument angeben. Skript wird abgebrochen."
+ echo -e "\nBitte mindestens einen Nachnamen angeben. Skript wird abgebrochen."
  exit 1
 fi
 
