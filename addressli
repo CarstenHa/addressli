@@ -58,11 +58,12 @@ cat <<EOU
 
 SYNOPSIS Beispiele:
 
-	$0 [nachname] [evtl. vorname]
+	$0 NAME [VORNAME]
 	$0 \*
-	$0 [options]
-	$0 [options] [argument]
-	$0 -e [argument] [nachname] [evtl. vorname]
+	$0 [OPTION]
+	$0 [OPTION] ARG
+	$0 -e ARG YYYY
+	$0 -DC LÄNDERRCODE -F LÄNDERRCODE [YYYY]
 
 $(basename $0) ist eine kleine Adressverwaltung für die Konsole.
 Es stehen folgende Optionen zur Verfügung:
@@ -73,16 +74,21 @@ Options:
 
 	Kalender des laufenden Monats wird angezeigt.
 
-   -C <yyyy> <altern. Ländercode>
+   -C ARG [YYYY]
 
-	Jahreskalender mit Feiertagen wird angezeigt. Benötigt einen Ländercode in der Datei
-	config/addressli.conf
-	Dieser kann mit gcal -?? ermittelt werden.
+	Jahreskalender mit Feiertagen wird angezeigt. Benötigt eine der folgenden Angaben:
+	1. ? Damit werden die definierten Ländercodes aus config/addressli.conf aufgelistet
+	     und abgefragt.
+	Es kann auch ein alternativer Ländercode angegeben werden, der nicht in der config-Datei
+	definiert ist. Dieser wird dann anstelle eines Ländercodes aus der config-Datei übernommen.
+	2. Angabe eines alternativen Ländercodes aus gcal-Liste
+	3. l Mit 'l' werden die Ländercodes aufgelistet.
+
 	Beispiel:
 	AD (für Andorra)
 	Bei optionaler Angabe einer Jahreszahl werden die Feiertage des angegebenen Jahres angezeigt.
-	Es kann auch ein alternativer Ländercode angegeben werden, der nicht in der config-Datei
-	definiert ist. Dieser wird dann anstelle eines Ländercodes aus der config-Datei übernommen.
+	Die Jahreszahl muss als letztes Argument angegeben werden.
+	Die Option -C ist mit den Optionen -D und -F kombinierbar.
 
    -d
 
@@ -92,12 +98,14 @@ Options:
 	Weitere Informationen findet man auch unter:
 	https://www.gnu.org/software/gcal/manual/gcal.html
 
-   -D <yyyy>
+   -D [YYYY]
 
 	listet die Termine für die kommenden 12 Monate auf.
 	Bei optionaler Angabe einer Jahreszahl werden die Termine des angegebenen Jahres angezeigt.
+	Die Jahreszahl muss als letztes Argument angegeben werden.
+	Die Option -D ist mit den Optionen -C und -F kombinierbar.
 
-   -e [argument] [yyyy] <altern. Ländercode>
+   -e ARG YYYY [LÄNDERCODE]
 
 	exportiert die Feiertage und/oder Termine eines angegeben Jahres in eine .ics-Datei.
 	Benötigt weitere Angaben in Form eines Formats und einer Jahreszahl.
@@ -111,7 +119,7 @@ Options:
 	der nicht in der config-Datei definiert ist. Dieser wird dann anstelle eines Ländercodes aus der
 	config-Datei übernommen.
 
-   -E [argument] [name]
+   -E ARG NAME [VORNAME]
 
 	Exportiert das Ergebnis der Adresssuche mit dem angegebenen Namen. Benötigt ein weiteres
 	Argument in Form eines Formats. Folgende Formate können zur Zeit angegeben werden:
@@ -119,6 +127,18 @@ Options:
 	vcf     - Standardformat für Adressdaten.
 	          Die Ausgabe kann als klassische .vcf-Datei oder als QR-Code gewählt werden.
 	messid  - Ausgabe einer MessengerID als QR-Code auf der Standardausgabe oder als Datei.
+
+   -F ARG [YYYY]
+
+	Ferientermine werden angezeigt. Benötigt eine der folgenden Angaben:
+	1. Angabe eines Ländercodes aus Liste (-F l)
+	2. l Mit 'l' werden die Ländercodes aufgelistet.
+
+	Beispiel:
+	DE_NW für Deutschland (Nordrhein-Westfalen)
+	Bei optionaler Angabe einer Jahreszahl werden die Ferientermine des angegebenen Jahres angezeigt.
+	Die Jahreszahl muss als letztes Argument angegeben werden.
+	Die Option -F ist mit den Optionen -C und -D kombinierbar.
 
    -h
 
@@ -137,8 +157,8 @@ Options:
 
 	Öffnet die Datei notes/jottings.txt in Editor nano zur Bearbeitung.
 
-   -l [argument]
-   -l miss [name]
+   -l ARG
+   -l miss NAME
 
 	listet verschiedene Dinge auf. Beonötigt ein weiteres Argument.
 	file    - listet die Adressdatei auf.
@@ -148,7 +168,7 @@ Options:
 	          Benötigt mindestens den Nachnamen.
 	          Angabe des Vornamens ist optional, wenn nur ein Datensatz existiert.
 
-   -m [argument] [nachname] [evtl. vorname]
+   -m ARG NAME [VORNAME]
 
 	ändert einzelne Elemente aus einem vcf-Datensatz. Benötigt eins der folgenden Argumente:
 	mod     - Fügt eine neue Zeile zu einem bestehenden Datensatz hinzu oder ändert eine bestehende Zeile.
@@ -157,7 +177,7 @@ Options:
 
 	delmess - Löscht eine MessengerID aus Adressdatendatei.
 
-   -n [argument]
+   -n ARG
 
 	nimmt einen neuen Datensatz in die Adressdatei auf.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
@@ -169,7 +189,7 @@ Options:
 	vcf      - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
 	           Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
 
-   -r [argument]
+   -r ARG
 
 	Termine des aktuellen Tages an unterschiedliche Dienste übergeben.
 	Eines der folgenden Argumente muss zusätzlich mit angegeben werden:
@@ -193,7 +213,7 @@ Options:
 	Vor dem erstmaligen Ausführen der Synchronisation (Option -s) bitte die Dateien zwischen Client
 	und Host 'von Hand' abgleichen und ggf. ein Backup der Daten machen.
 
-   -u [argument]
+   -u ARG
 
 	Daten der Schulferien werden heruntergeladen/aktualisiert.
 	Eines der folgenden Länderkürzel muss zusätzlich mit angegeben werden:
@@ -622,6 +642,7 @@ holiupdate() {
     else
      echo -e "Quelle : ${repourl}\n         Lizenz siehe ${licensepath}" >"${pathofaddress}/holidays/SOURCE"
     fi
+    wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays" "${repourl}/raw/develop/src/countries.csv"
     for country in ${countrylist[@]}; do
      unset hfilename
      [ ! -d "${pathofaddress}/holidays/${country}" ] && mkdir -v "${pathofaddress}/holidays/${country}"
@@ -632,6 +653,7 @@ holiupdate() {
      elif [ "$country" == "de" ]; then
       hfilename="holidays.school.{bb,be,bw,by,hb,he,hh,mv,ni,nw,rp,sh,sl,sn,st,th}.csv"
      fi
+     wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays/${country}" "${repourl}/raw/develop/src/${country}/subdivisions.csv"
      if [ -n "$hfilename" ]; then
       wgetcomm="wget -Nc -t 3 --progress=bar -P ${pathofaddress}/holidays/${country}"
       urlpath="${repourl}/raw/develop/src/${country}/holidays/${hfilename}"
@@ -645,7 +667,7 @@ holiupdate() {
 
 [ ! -e "${pathofaddress}/.hash.log" -o -z "$(grep "${pathofaddress}" "${pathofaddress}/.hash.log" 2>/dev/null)" ] && checksum >"${pathofaddress}/.hash.log"
 
-while getopts cCdDe:E:hHjJl:m:n:r:su:wW opt
+while getopts cC:dDe:E:F:hHjJl:m:n:r:su:wW opt
 
 do 
  case $opt in
@@ -657,101 +679,19 @@ do
   ;;
 
   C) gcalcheck
-
-     shift $(("$OPTIND"-1))
-
-     adrstring="$@"
-     for arg in ${adrstring[@]}; do
-      if [[ "$arg" == [0-9][0-9][0-9][0-9] ]]; then
-       ejahr="$arg"
-      elif [[ "$arg" == [[:alpha:]][[:alpha:]] || "$arg" == [[:alpha:]][[:alpha:]]_[[:alpha:]][[:alpha:]] ]]; then
-       auswahl="$arg"
-      fi
-     done
-
-     [ -z "$ejahr" ] && ejahr="$(date +%Y)"
-
-     if [ "$dateformat" == "DE" ]; then
-      dateformatcheck="yes"
-     else
-      echo "Keine gültige Länderkennung in config-Datei definiert."
+     if ! [[ "$OPTARG" =~ ^[[:alpha:]][[:alpha:]]$ || "$OPTARG" =~ ^[[:alpha:]][[:alpha:]]_[[:alpha:]][[:alpha:]]$ || "$OPTARG" =~ ^[l?]$ ]]; then
+      usage
+      echo "Ungültiges Argument (Option -C). Skript wird abgebrochen!"
       exit 1
-     fi
-
-     ccontent() {
-      for cc in ${countrycodes[@]}; do
-       echo "$cc"
-      done | nl
-     }
-
-     exdays() {
-      if [ -n "$excludedays" ]; then
-       for excd in "${excludedays[@]}"; do
-        callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
-        calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
-       done
-      fi
-     }
-
-     hlight() {
-      # Beschreibung der einzelnen sed-Befehle:
-      # 1. Im oberen Kalenderbereich werden aufeinanderfolgende, (gesetzliche) Feiertage eingefärbt (Zahlen: (einstellig) - zweistellig).
-      # 2. Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt.
-      # 3. Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen eingefärbt.
-      # 4. Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
-      # 5. Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
-      [ "$highlighting" == "yes" ] && calcontent="$(echo "$calcontent" | sed '
-                                                   / [+#] /!s/:\( *\)\([0-9:]*\):/ \\e\[0;31;1m\1\2\\e\[0m /g
-                                                   / [+#] /!s/<\( *[0-9]*\)>/ \\e\[30;47m\1\\e\[0m /
-                                                   / + /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
-                                                   / # /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31m\1 \2 \3\\e\[0m/
-                                                   s/\([0-9]\):/\1 /g
-                                                  ')"
-     }
-
-     while [ -z "$auswahl" ]; do
-      ccontent
-      read -p "Bitte Ländercode auswählen: " land
-      auswahl="$(ccontent | grep "[[:space:]]${land}[[:space:]]" | sed 's/^ *//' | cut -f2)"
-     done
-
-     if [ -n "$extholidays" ]; then
-
-      # Doppelte Tage werden rausgefiltert.
-      daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
-      if [ "$highlighting" == "yes" ]; then
-       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
-       hlight
-      else
-       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
-      fi
-
-      # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
-      extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
-      [ -n "$extholidaysabbr" ] && while read -r oneday; do
-                                    calcontent="$(echo "$calcontent" | sed '
-                                                  /('"$extholidaysabbr"').*'"$oneday"'/d
-                                                ')"
-                                   done <<<"$daylist"
-
-      exdays
-      [ -n "$calcontent" ] && echo -e "$calcontent"
-
      else
-
-      if [ "$highlighting" == "yes" ]; then
-       calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list $(date +%Y))"
-       hlight
-      else
-       calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list $(date +%Y))"
-      fi
-
-      exdays
-      [ -n "$calcontent" ] && echo -e "$calcontent"
-
+      optccal="yes"
      fi
-     echo ""
-     exit
+     if [ "$OPTARG" == "l" ]; then
+      gcal --usage=cc-holidays
+      onlychelp="yes"
+     else
+      causwahl="$OPTARG"
+     fi
   ;;
 
   d) gcalcheck
@@ -763,19 +703,7 @@ do
 
   D) gcalcheck
      datefilecheck
-     shift $(("$OPTIND"-1))
-     ejahr=$1
-     if [ -n "$ejahr" ]; then
-      while [[ ! "$ejahr" == [0-9][0-9][0-9][0-9] ]]; do
-       read -p "Bitte eine gültige Jahreszahl angeben (yyyy): " ejahr
-      done
-      gcal -K -f "$datefile" "$ejahr"
-     else
-      gcal :
-      gcal -K -f "$datefile" :
-     fi
-     echo ""
-     exit
+     optdcal="yes"
   ;;
 
   e) expformat="$OPTARG"
@@ -1002,6 +930,28 @@ do
 
      # Das shiften ist wichtig, damit die Namen später korrekt ausgewertet werden.
      shift $(("$OPTIND"-1))
+  ;;
+
+  F) # Ausgabe der Ferientermine
+     if ! [[ "$OPTARG" =~ ^[[:alpha:]][[:alpha:]]$ || "$OPTARG" =~ ^[[:alpha:]][[:alpha:]]_[[:alpha:]][[:alpha:]]$ || "$OPTARG" =~ ^[l]$ ]]; then
+      usage
+      echo "Ungültiges Argument (Option -F). Skript wird abgebrochen!"
+      exit 1
+     else
+      optfcal="yes"
+     fi
+     fkuerzel="${OPTARG,,}"
+     fkuerzelc="${fkuerzel%%_*}"
+     fkuerzels="${fkuerzel##*_}"
+     if [ "$fkuerzelc" == "at" -a -e "${pathofaddress}/holidays/${fkuerzelc}/holidays.school.csv" ]; then
+      # Variable leeren ist wichtig für weiteres Vorgehen.
+      fkuerzels=""
+      fpath="${pathofaddress}/holidays/${fkuerzelc}/holidays.school.csv"
+     elif [ -e "${pathofaddress}/holidays/${fkuerzelc}/holidays.school.${fkuerzels}.csv" ]; then
+      fpath="${pathofaddress}/holidays/${fkuerzelc}/holidays.school.${fkuerzels}.csv"
+     elif [ "$fkuerzel" == "l" ]; then
+      onlyfhelp="yes"
+     fi
   ;;
 
   h) usage
@@ -1667,6 +1617,216 @@ do
   
  esac
 done
+
+# ***** Kalenderoptionen *****
+if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
+
+ ejahr="${!#}"
+ [[ ! "$ejahr" =~ ^[0-9][0-9][0-9][0-9]$ ]] && ejahr="$(date '+%Y')"
+
+ # *** Option -C - Anfang ***
+ if [ "$optccal" == "yes" -a ! "$onlychelp" == "yes" ]; then
+
+  calprint="yes"
+  if [ "$dateformat" == "DE" ]; then
+   dateformatcheck="yes"
+  else
+   echo "Keine gültige Länderkennung in config-Datei definiert."
+   exit 1
+  fi
+
+  ccontent() {
+   for cc in ${countrycodes[@]}; do
+    echo "$cc"
+   done | nl
+  }
+
+  exdays() {
+   if [ -n "$excludedays" ]; then
+    for excd in "${excludedays[@]}"; do
+     callinenr+="$(echo "$calcontent" | grep -ni "$excd" | grep -o "^[0-9]*"),"
+     calcontent="$(echo "$calcontent" | sed "/${excd}/d")"
+    done
+   fi
+  }
+
+  hlight() {
+   # Beschreibung der einzelnen sed-Befehle:
+   # 1. Im oberen Kalenderbereich werden aufeinanderfolgende, (gesetzliche) Feiertage eingefärbt (Zahlen: (einstellig) - zweistellig).
+   # 2. Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt.
+   # 3. Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen eingefärbt.
+   # 4. Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
+   # 5. Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
+   [ "$highlighting" == "yes" ] && calcontent="$(echo "$calcontent" | sed '
+                                                / [+#] /!s/:\( *\)\([0-9:]*\):/ \\e\[0;31;1m\1\2\\e\[0m /g
+                                                / [+#] /!s/<\( *[0-9]*\)>/ \\e\[30;47m\1\\e\[0m /
+                                                / + /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
+                                                / # /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31m\1 \2 \3\\e\[0m/
+                                                s/\([0-9]\):/\1 /g
+                                               ')"
+  }
+
+
+  if [ "$causwahl" == "?" ]; then
+   while [ -z "$auswahl" ]; do
+    ccontent
+    read -p "Bitte Ländercode auswählen: " land
+    auswahl="$(ccontent | grep "[[:space:]]${land}[[:space:]]" | sed 's/^ *//' | cut -f2)"
+   done
+  else
+   auswahl="$causwahl"
+  fi
+
+  if [ -n "$extholidays" ]; then
+
+   # Doppelte Tage werden rausgefiltert.
+   daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+   if [ "$highlighting" == "yes" ]; then
+    calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
+    hlight
+   else
+    calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
+   fi
+
+   # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
+   extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
+   [ -n "$extholidaysabbr" ] && while read -r oneday; do
+                                 calcontent="$(echo "$calcontent" | sed '
+                                               /('"$extholidaysabbr"').*'"$oneday"'/d
+                                             ')"
+                                done <<<"$daylist"
+
+   exdays
+   [ -n "$calcontent" ] && echo -e "$calcontent"
+
+  else
+
+   if [ "$highlighting" == "yes" ]; then
+    calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list $(date +%Y))"
+    hlight
+   else
+    calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list $(date +%Y))"
+   fi
+
+   exdays
+   [ -n "$calcontent" ] && echo -e "$calcontent"
+
+  fi
+  echo ""
+
+ fi
+ # *** Option -C - Ende ***
+
+ # *** Option -D - Anfang ***
+ if [ "$optdcal" == "yes" ]; then
+
+  if [ "$calprint" == "yes" ]; then
+   gcal -u -f "$datefile" "$ejahr"
+  else
+   calprint="yes"
+   gcal -K -f "$datefile" "$ejahr"
+  fi
+  echo ""
+
+ fi
+ # *** Option -D - Ende ***
+
+ # *** Option -F - Anfang ***
+ if [ "$optfcal" == "yes" ]; then
+
+  prntsource() {
+   echo ""
+   echo "Schulferiendaten:"
+   [ -n "$holilist" ] && cat "${pathofaddress}/holidays/${fkuerzelc}/timestamp.log"
+   cat "${pathofaddress}/holidays/SOURCE"
+  }
+
+  holilist="$(grep ';'"${ejahr}"'-' "$fpath" 2>/dev/null)"
+  if [ -n "$holilist" ]; then
+   if [ "$calprint" == "yes" ]; then
+     gcal -u "$ejahr"
+    else
+     calprint="yes"
+     gcal -K "$ejahr"
+     echo ""
+    fi
+    if [ -n "$fkuerzels" ]; then
+     subname=" ($(grep ';'"${fkuerzelc^^}-${fkuerzels^^}"';' "${pathofaddress}/holidays/${fkuerzelc}/subdivisions.csv" | cut -f6 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/'))"
+    fi
+    echo "Schulferien für $(grep "^${fkuerzelc^^}" "${pathofaddress}/holidays/countries.csv" | cut -f2 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')${subname}:"
+    printf '\n%-12s %-10s %-30s\n\n' "$(echo "Beginn")" "$(echo "Ende")" "$(echo "Bezeichnung")"
+
+    unset allsub
+    while read -r holiline; do
+     hstart="$(cut -f3 -d';' <<<"$holiline")"
+     hend="$(cut -f4 -d';' <<<"$holiline")"
+     [ -n "$hend" ] && hverb="-" || hverb=""
+     hbez="$(cut -f6 -d';' <<<"$holiline")"
+     hsub="$(cut -f7 -d';' <<<"$holiline")"
+     if [ ! "${hsub,,}" == "$fkuerzels" ]; then
+      prntsub="$hsub"
+      allsub+="${hsub},"
+     else
+      prntsub=""
+     fi
+     hcom="$(cut -f8 -d';' <<<"$holiline" | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')"
+     [ -n "$hcom" ] && prntcom="$hcom" || prntcom=""
+     printf '%10s %1s %10s %-25s %-16s %-25s\n' "$(sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/' <<<"$hstart")" "$hverb" "$(sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/' <<<"$hend")" "$(sed 's/.*DE \([^,]*\),\{,1\}.*/\1/' <<<"$hbez")" "$prntsub" "$prntcom" | sed 's/[[:space:]]\{20\}//g'
+    done <<<"$holilist"
+
+    # Hinweise zu Abkürzungen
+    if [ -n "$allsub" ]; then
+     echo -e "\nHinweise:"
+     abbrlist="$(echo "$allsub" | tr ',' '\n' | sort | uniq | sed '/^$/d')"
+     while read -r hinweis; do
+      grep ';'"${hinweis}"';' "${pathofaddress}/holidays/${fkuerzelc}/subdivisions.csv"  | cut -f6 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/'"$hinweis"' = \1/'
+     done <<<"$abbrlist"
+    fi
+
+    prntsource
+
+  elif [ "$onlyfhelp" == "yes" ]; then
+
+   echo -e "\nMögliche Länderkürzel für Ferientermine:"
+   hdirlist=($(find "${pathofaddress}/holidays" -mindepth 1 -maxdepth 1 -type d -exec basename {} \;))
+   for land in "${hdirlist[@]}"; do
+
+    lline="$(grep "^${land^^}" "${pathofaddress}/holidays/countries.csv" 2>/dev/null)"
+    lsublines="$(grep "^${land^^}" "${pathofaddress}/holidays/${land}/subdivisions.csv" 2>/dev/null | cut -f 1,4,6 -d';' | egrep '^[A-Z]{2};[A-Z]{2};')"
+    if [ -n "$lline" -a -n "$lsublines" ]; then
+     llongname="$(echo "$lline" | cut -f2 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')"
+     echo -e "\n${llongname}:"
+     if [ "$land" == "at" ]; then
+      echo "${land^^}"
+     else
+      lkue="$(echo "$lsublines" | cut -f1,2 -d';' | sed 's/;/_/')"
+      lname="$(echo "$lsublines" | cut -f3 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')"
+      paste <(echo "$lkue") <(echo "$lname") | sed 's/\([A-Z]\{2\}\)[[:space:]]*\([A-Z]\{2\}\)\(.*\)/\1_\2 \3/'
+     fi
+    else
+     echo "Feriendaten (${land^^}) unvollständig. Bitte erst downloaden (Option -u)."
+     echo "Skript wird abgebrochen!"
+     exit 1
+    fi
+
+   done
+   prntsource
+
+  else
+
+   echo "Keine Daten vorhanden."
+
+  fi
+  echo ""
+
+ fi
+ # *** Option -F - Ende ***
+
+ # Programm wird nach den Kalenderoptionen beendet.
+ exit
+
+fi
+# ***** Kalenderoptionen - Ende *****
 
 if [ -z "$1" ]; then
  usage
