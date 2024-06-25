@@ -51,15 +51,15 @@ Termine in E-Mails mit GnuPG verschlüsseln:
 
 1. Zunächst benötigt man den öffentlichen Schlüssel der Zieladresse (E-Mail) und notiert sich den 40-stelligen Fingerprint.
 2. Falls Gnupg2 noch nicht installiert ist, muss dieser Schritt noch gemacht werden: `sudo apt-get install gnupg2`
-3. Danach muss der öffentliche Schlüssel der Zieladresse (Email) importiert werden: `gpg2 --import dateiname.asc`
-4. Danach kann man die Fingerprints vergleichen. Den Fingerabdruck des gerade importierten Schlüssels erfährt man mit `gpg2 -k`
-5. Nun muss noch dem Schlüssel vertraut werden. Sind die beiden Fingerprints identisch gibt man folgenden Befehl ein: `gpg2 --edit-key [40-stelliger Fingerprint]`
+3. Danach muss der öffentliche Schlüssel der Zieladresse (Email) importiert werden: `gpg --import dateiname.asc`
+4. Danach kann man die Fingerprints vergleichen. Den Fingerabdruck des gerade importierten Schlüssels erfährt man mit `gpg -k`
+5. Nun muss noch dem Schlüssel vertraut werden. Sind die beiden Fingerprints identisch gibt man folgenden Befehl ein: `gpg --edit-key [40-stelliger Fingerprint]`
 6. In der folgenden interaktiven Abfrage gibt man ein:  
     `trust`  
     `5` (5 = Ich vertraue ihm absolut)  
     Eingabe mit `j` bestätigen  
     `quit`
-7. Anschließend die Datenbank updaten: `gpg2 --update-trustdb`
+7. Anschließend die Datenbank updaten: `gpg --update-trustdb`
 8. Die Verschlüsselung aktiviert man, indem man den 40-stelligen Fingerprint in die Variable `keyfingerprint` in der Datei `config/addressli.conf` einträgt. Nun sollten die Termine verschlüsselt übertragen werden.
 
 Hinweis: Es werden nur die Termine verschlüsselt, andere Elemente der E-Mail wie zum Beispiel der Betreff bleiben unberührt und werden gemäß der Konfiguration übertragen.  
