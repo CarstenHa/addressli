@@ -31,6 +31,12 @@ END:XMPP
 BEGIN:MASTODON
 END:MASTODON
 
+# MatrixIDs
+# Beispiel: Nachname:Vorname:User:MatrixServer
+# Neue Adressen können mit der Option -n matrix aufgenommen werden (siehe auch addressli -h).
+BEGIN:MATRIX
+END:MATRIX
+
 # ToxIDs
 # Beispiel: Nachname:Vorname:Accountname:76stellige_ToxID
 # Neue Adressen können mit der Option -n tox aufgenommen werden (siehe auch addressli -h).

@@ -185,6 +185,7 @@ Options:
 	jabber   - Nimmt einen neuen Jabber-Datensatz auf.
 	jami     - Nimmt einen neuen Jami-Datensatz auf.
 	mastodon - Nimmt einen neuen Mastodon-Datensatz auf.
+	matrix   - Nimmt einen neuen Matrix-Datensatz auf.
 	tox      - Nimmt einen neuen Tox-Datensatz auf.
 	vcf      - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
 	           Diese Datensätze bilden die Grundlage für diese Adressverwaltung.
@@ -454,7 +455,7 @@ adrprint1() {
     [ -n "$con_email_work" -o "$showlabel" == "yes" ] && printf 'E-mail               : %0s\n' "$con_email_work"
 
     # MessDef2
-    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$mastodoncontent" -o -n "$toxcontent" ]); then
+    if ([ "$showlabel" == "yes" ] || [ -n "$briarcontent" -o -n "$jabbercontent" -o -n "$jamicontent" -o -n "$mastodoncontent" -o -n "$matrixcontent" -o -n "$toxcontent" ]); then
      let printcounter++
      echo -e "\n${vcardcheck}.${printcounter} Kontaktdaten sonstige"
      [ "$showlabel" == "yes" ] && echo "MessengerIDs; etc."
@@ -1055,7 +1056,7 @@ do
       vorname="$2"
 
       # MessDef3
-      messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|MASTODON\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
+      messidlist="$(sed -n '/^BEGIN:BRIAR\|JAMI\|MASTODON\|MATRIX\|TOX\|XMPP/,/^END/{=;p}' "${pathofaddress}/address.lst" | sed 's/^\([0-9]*\)$/|\1:/' | tr -d '\n' | sed 's/|/\n/g' | sed '/^$/d')"
 
       # Art der IDs und die Position (Zeilennummern) in Adressdatendatei wird in Liste geschrieben.
       while read -r checkid; do
@@ -1234,6 +1235,21 @@ do
       servercheck="$mastoserver"
       wscheck
 
+     elif [ "$OPTARG" == "matrix" ]; then
+
+      while [ -z "$matrixnachname" ]; do
+       read -p "Bitte Nachnamen eingeben: " matrixnachname
+      done
+      while [ -z "$matrixvorname" ]; do
+       read -p "Bitte Vornamen eingeben: " matrixvorname
+      done
+      while [ -z "$matrixuser" -o -n "$(egrep '^@|[:;]' <<<"$matrixuser")" ]; do
+       read -p "Bitte Matrix-User eingeben (ohne Präfix @ oder die Zeichen ;:): " matrixuser
+      done
+      while [ -z "$matrixserver" -o -n "$(egrep '^(http)|[:;]' <<<"$matrixserver")" ]; do
+       read -p "Bitte Matrix-Server eingeben (ohne Präfix http(s) oder die Zeichen ;:): " matrixserver
+      done
+
      elif [ "$OPTARG" == "tox" ]; then
 
       while [ -z "$toxnachname" ]; do
@@ -1291,6 +1307,11 @@ do
 
       mastonewline="$(echo "${mastonachname}:${mastovorname}:${mastouser}:${mastoserver}:${httpscheck}")"
       sed -i 's/\(END:MASTODON\)/'"$mastonewline"'\n\1/' "${pathofaddress}/address.lst"
+
+    elif [ "$OPTARG" == "matrix" ]; then
+
+      matrixnewline="$(echo "${matrixnachname}:${matrixvorname}:${matrixuser}:${matrixserver}")"
+      sed -i 's/\(END:MATRIX\)/'"$matrixnewline"'\n\1/' "${pathofaddress}/address.lst"
 
      elif [ "$OPTARG" == "tox" ]; then
 
@@ -1895,6 +1916,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
    jabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    jamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    mastodoncontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MASTODON/,/END:MASTODON/p' | grep -i '^'"$nachname"':'"$vorname"'')"
+   matrixcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MATRIX/,/END:MATRIX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
    toxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -i '^'"$nachname"':'"$vorname"'')"
 
    adr_home_singleline="$(echo "$vcfsinglecontent" | grep '^ADR;TYPE=home;')"
@@ -2056,6 +2078,28 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
        let messcounter++
        masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's/^\|:/@/g')"
        messprint+="${messcounter};${masdid};Mastodon (Profil);${masservername};${nachname^};${vorname^}"$'\n'
+      fi
+     done
+    fi
+
+    # *** MatrixIDs werden verarbeitet ***
+    if [ -n "$matrixcontent" ]; then
+     anzmtrx="$(echo "$matrixcontent" | wc -l)"
+     for mtrxid in $(seq 1 "$anzmtrx"); do
+      mtrxline="$(echo "$matrixcontent" | sed -n ''${mtrxid}'p')"
+      mtrxuser="$(echo "$mtrxline" | cut -d':' -f3)"
+      mtrxservername="$(echo "$mtrxline" | cut -d':' -f4)"
+      echo "MatrixID ${mtrxid}           : @${mtrxuser}:${mtrxservername} (${mtrxservername})"
+      if [ "$exportmodus" == "vcfformat" ]; then
+       if [ -n "$sonstiges" ]; then
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^NOTE:.*$\)/\1\\nMatrixID ('"$mtrxservername"'): @'"${mtrxuser}"':'"${mtrxservername}"'/')"
+       else
+        vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's/\(^END:VCARD\)/NOTE:MatrixID ('"$mtrxservername"'): @'"${mtrxuser}"':'"${mtrxservername}"'\n\1/')"
+       fi
+      elif [ "$exportmodus" == "qrcode" ]; then
+       let messcounter++
+       mtrxdid="$(echo "$mtrxline" | cut -d':' -f3,4 | sed 's/^/@/')"
+       messprint+="${messcounter};${mtrxdid};Matrix;${mtrxservername};${nachname^};${vorname^}"$'\n'
       fi
      done
     fi
@@ -2538,9 +2582,10 @@ if [ "$vcardcheck" == "0" ]; then
   checkjabbercontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:XMPP/,/END:XMPP/p' | grep -ci '^'"$nachname"':')"
   checkjamicontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:JAMI/,/END:JAMI/p' | grep -ci '^'"$nachname"':')"
   checkmastodoncontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MASTODON/,/END:MASTODON/p' | grep -ci '^'"$nachname"':')"
+  checkmatrixcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:MATRIX/,/END:MATRIX/p' | grep -ci '^'"$nachname"':')"
   checktoxcontent="$(echo "$adrlistcontent" | sed -n '/BEGIN:TOX/,/END:TOX/p' | grep -ci '^'"$nachname"':')"
-  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checkjamicontent" -gt "0" -o "$checkmastodoncontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
-   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs, ${checkjamicontent} JamiIDs, ${checkmastodoncontent} MastodonIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
+  if [ "$checkbriarcontent" -gt "0" -o "$checkjabbercontent" -gt "0" -o "$checkjamicontent" -gt "0" -o "$checkmastodoncontent" -gt "0" -o "$checkmatrixcontent" -gt "0" -o "$checktoxcontent" -gt "0" ]; then
+   echo "Es wurden ${checkbriarcontent} BriarIDs, ${checkjabbercontent} JabberIDs, ${checkjamicontent} JamiIDs, ${checkmastodoncontent} MastodonIDs, ${checkmatrixcontent} MatrixIDs und ${checktoxcontent} ToxIDs mit dem Namen ${1^} ermittelt."
    echo "Bitte erst einen passenden VCARD-Datensatz erstellen mit $0 -n vcf"
   fi
   
