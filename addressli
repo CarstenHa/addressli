@@ -184,7 +184,7 @@ Options:
 	briar    - Nimmt einen neuen Briar-Datensatz auf.
 	jabber   - Nimmt einen neuen Jabber-Datensatz auf.
 	jami     - Nimmt einen neuen Jami-Datensatz auf.
-	mastodon - Nimmt einen neuen Mastodon-Datensatz auf.
+	mastodon - Nimmt einen neuen Mastodon (Fediverse)-Datensatz auf.
 	matrix   - Nimmt einen neuen Matrix-Datensatz auf.
 	tox      - Nimmt einen neuen Tox-Datensatz auf.
 	vcf      - Nimmt einen neuen Adress-Datensatz im vcf-Format auf.
@@ -2062,7 +2062,7 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
       # yes/no-Wert der HTTPS-Überprüfung (mit Funktion wscheck) beim Anlegen des Datensatzes.
       massslcheck="$(echo "$masline" | cut -d':' -f5)"
       [ "$massslcheck" == "yes" ] && scheme="https://"
-      echo "MastodonID ${mastoid}         : @${masuser}@${masservername} (${scheme}${masservername}/@${masuser})"
+      echo "FediverseID ${mastoid}        : @${masuser}@${masservername} (${scheme}${masservername}/@${masuser})"
       if [ "$exportmodus" == "vcfformat" ]; then
        if [ -n "$sonstiges" ]; then
         vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's%\(^NOTE:.*$\)%\1\\nMastodonID ('"$masservername"'): @'"${masuser}"'@'"${masservername}"' ('"${scheme}${masservername}"'/@'"${masuser}"')%')"
@@ -2070,14 +2070,18 @@ for vcardbeg in $(seq 1 "$anzvcfcontent"); do
         vcfsinglecontent="$(echo "$vcfsinglecontent" | sed 's%\(^END:VCARD\)%NOTE:MastodonID ('"$masservername"'): @'"${masuser}"'@'"${masservername}"' ('"${scheme}${masservername}"'/@'"${masuser}"')\n\1%')"
        fi
       elif [ "$exportmodus" == "qrcode" ]; then
-       # Mastodon-Link (https://example.com/@user)
-       let messcounter++
-       masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's%\(.*\):\(.*\)%'"$scheme"'\2@\1%')"
-       messprint+="${messcounter};${masdid};Mastodon (Link);${masservername};${nachname^};${vorname^}"$'\n'
        # Mastodon-Profil (@user@example.com)
        let messcounter++
        masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's/^\|:/@/g')"
-       messprint+="${messcounter};${masdid};Mastodon (Profil);${masservername};${nachname^};${vorname^}"$'\n'
+       messprint+="${messcounter};${masdid};Fedi (Profil);${masservername};${nachname^};${vorname^}"$'\n'
+       # Mastodon-Link (https://example.com/@user)
+       let messcounter++
+       masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's%\(.*\):\(.*\)%'"$scheme"'\2@\1%')"
+       messprint+="${messcounter};${masdid};Fedi (Link);${masservername};${nachname^};${vorname^}"$'\n'
+       # ActivityPub (web+ap://)
+       let messcounter++
+       masdid="$(echo "$masline" | cut -d':' -f3,4 | sed 's%\(.*\):\(.*\)%web+ap://\2@\1%')"
+       messprint+="${messcounter};${masdid};Fedi (ActivityPub);${masservername};${nachname^};${vorname^}"$'\n'
       fi
      done
     fi
@@ -2537,25 +2541,27 @@ if [ "$exportmodus" == "qrcode" ]; then
  done <<<"$messprint"
  #printf -- "─%.0s" $(seq $(tput cols))
  echo ""
- while [ -z "$(echo "$messprint" | grep "^${messausw};")" ]; do
-  read -p "Bitte Auswahl eingeben: " messausw
+ while [ -z "$(echo "$messprint" | grep "^${messausw};")" -a ! "$messausw" == "q" ]; do
+  read -p "Bitte Auswahl eingeben (q für beenden): " messausw
  done
- selectedmessid="$(echo "$messprint" | grep "^${messausw};" | cut -f2 -d';')"
- read -p "Soll der QR-Code auf [S]tandardausgabe oder als PNG-[B]ild ausgegeben werden? " qrexport
- while true; do
-  case "$qrexport" in
-    s|S) qrencode -o - -t ASCIIi "$selectedmessid"
-         qrtype="stout"
-         break
-        ;;
-    b|B) qrencode -o "vcfinqrcode_${nachname,,}_${vorname,,}.png" "$selectedmessid"
-         qrtype="bild"
-         break
-        ;;
-      *) echo "Fehlerhafte Eingabe"
-        ;;
-  esac
- done
+ if [ ! "$messausw" == "q" ]; then
+  selectedmessid="$(echo "$messprint" | grep "^${messausw};" | cut -f2 -d';')"
+  read -p "Soll der QR-Code auf [S]tandardausgabe oder als PNG-[B]ild ausgegeben werden? " qrexport
+  while true; do
+   case "$qrexport" in
+     s|S) qrencode -o - -t ASCIIi "$selectedmessid"
+          qrtype="stout"
+          break
+         ;;
+     b|B) qrencode -o "vcfinqrcode_${nachname,,}_${vorname,,}.png" "$selectedmessid"
+          qrtype="bild"
+          break
+         ;;
+       *) echo "Fehlerhafte Eingabe"
+         ;;
+   esac
+  done
+ fi
 fi
 
 # Die vcf-Elemente, die in einem QR-Code umgewandelt werden, sind aufgrund ihrer Größe
