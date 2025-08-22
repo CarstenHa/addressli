@@ -1712,9 +1712,22 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
    # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
    extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
    [ -n "$extholidaysabbr" ] && while read -r oneday; do
+                                 # Überprüfung, ob mehrere Einträge für die (zusätzliche) Feiertagsliste und
+                                 # für den entsprechenden Tag existieren.
+                                 bezft="$(echo "$calcontent" | sed -n '/('"$extholidaysabbr"').*'"$oneday"'$/p' | grep -o '^[^(]*')"
+                                 if [ "$(echo "$bezft" | wc -l)" -gt 1 ]; then
+                                  while read -r bezline; do
+                                   if [ -n "$(echo "${excludedays[@]}" | grep "${bezline%% }")" ]; then
+                                    calcontent="$(echo "$calcontent" | sed '
+                                                                            /^'"$bezline"'('"$extholidaysabbr"').*'"$oneday"'$/d
+                                                                           ')"
+                                   fi
+                                  done <<<"${bezft}"
+                                 else
                                  calcontent="$(echo "$calcontent" | sed '
-                                               /('"$extholidaysabbr"').*'"$oneday"'/d
-                                             ')"
+                                                                         /('"$extholidaysabbr"').*'"$oneday"'$/d
+                                                                        ')"
+                                 fi
                                 done <<<"$daylist"
 
    exdays
