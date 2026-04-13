@@ -1672,21 +1672,41 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
   }
 
   hlight() {
-   # Beschreibung der einzelnen sed-Befehle:
-   # 1. Im oberen Kalenderbereich werden aufeinanderfolgende, (gesetzliche) Feiertage eingefärbt (Zahlen: (einstellig) - zweistellig).
-   # 2. Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt.
-   # 3. Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen eingefärbt.
-   # 4. Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
-   # 5. Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
    [ "$highlighting" == "yes" ] && calcontent="$(echo "$calcontent" | sed '
+                                                # Im oberen Kalenderbereich werden aufeinanderfolgende, (gesetzliche) Feiertage eingefärbt.
                                                 / [+#] /!s/:\( *\)\([0-9:]*\):/ \\e\[0;31;1m\1\2\\e\[0m /g
-                                                / [+#] /!s/<\( *[0-9]*\)>/ \\e\[30;47m\1\\e\[0m /
+                                                # Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt, wenn <...>*.
+                                                / [+#] /!s/<\( *\)\([0-9]*\)>*/ \1\\e\[30;47m\2\\e\[0m /
+                                                # Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt, wenn ...> (Dient zur Sicherheit, wenn folgendes Szenario ist :...:...>
+                                                / [+#] /!s/\([0-9]*\)>/\\e\[30;47m\1\\e\[0m /
+                                                # Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen UND aktuellem Datum eingefärbt.
+                                                / + /s/\(^.*\)<\( *[0-9]*\)>\(.*$\)/\\e\[0;31;1m\1\\e\[0m \\e\[31;47m\2\\e\[0m \\e\[0;31;1m\3\\e\[0m/
+                                                # Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen OHNE aktuellem Datum eingefärbt.
                                                 / + /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
+                                                # Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
                                                 / # /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31m\1 \2 \3\\e\[0m/
+                                                # Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
                                                 s/\([0-9]\):/\1 /g
                                                ')"
   }
 
+  # Formatierung im gcal-Rohformat.
+  # Variable calcontent wird neu belegt.
+  dataprep() {
+   blatt="$(echo "$calcontent" | grep -v '(.*)')"
+   liste="$(echo "$calcontent" | grep '(.*)')"
+
+   spalte1="$(echo "$liste" | grep -o '^.*)   ')"
+   spalte23="$(echo "$liste" | grep -o '(.*)  .*' | sed 's/^(.*)[[:space:]]*//g
+                                                              s/\([:> ]\{1\}[[:alpha:]]\{2\}\) \([0-9]\{4\}\)/\1  \2/
+                                                             ')"
+
+   calcontent="$(
+   printf '%s\n' "$blatt"
+   echo ""
+   paste <(echo "$spalte1") <(echo "$spalte23") | awk -F'\t' '{printf "%-42s %s\n", $1, $2}'
+   )"
+  }
 
   if [ "$causwahl" == "?" ]; then
    while [ -z "$auswahl" ]; do
@@ -1701,33 +1721,22 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
   if [ -n "$extholidays" ]; then
 
    # Doppelte Tage werden rausgefiltert.
-   daylist="$(gcal --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '[+-][0-9]* [[:alnum:]]*$' | uniq -d)"
+   daylist="$(gcal -u --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '^.*(.*)   ' | sed 's/ (.*)   //' | uniq -d)"
+
    if [ "$highlighting" == "yes" ]; then
     calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
+    dataprep
     hlight
    else
     calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
+    dataprep
    fi
 
-   # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
+   # Abkürzung der zusätzlichen Feiertagsliste.
    extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
+   # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
    [ -n "$extholidaysabbr" ] && while read -r oneday; do
-                                 # Überprüfung, ob mehrere Einträge für die (zusätzliche) Feiertagsliste und
-                                 # für den entsprechenden Tag existieren.
-                                 bezft="$(echo "$calcontent" | sed -n '/('"$extholidaysabbr"').*'"$oneday"'$/p' | grep -o '^[^(]*')"
-                                 if [ "$(echo "$bezft" | wc -l)" -gt 1 ]; then
-                                  while read -r bezline; do
-                                   if [ -n "$(echo "${excludedays[@]}" | grep "${bezline%% }")" ]; then
-                                    calcontent="$(echo "$calcontent" | sed '
-                                                                            /^'"$bezline"'('"$extholidaysabbr"').*'"$oneday"'$/d
-                                                                           ')"
-                                   fi
-                                  done <<<"${bezft}"
-                                 else
-                                 calcontent="$(echo "$calcontent" | sed '
-                                                                         /('"$extholidaysabbr"').*'"$oneday"'$/d
-                                                                        ')"
-                                 fi
+                                  calcontent="$(echo "$calcontent" | sed '\%^'"$oneday"' ('"$extholidaysabbr"')   %d')"
                                 done <<<"$daylist"
 
    exdays
@@ -1737,9 +1746,11 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
 
    if [ "$highlighting" == "yes" ]; then
     calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list $(date +%Y))"
+    dataprep
     hlight
    else
     calcontent="$(gcal --date-format="$dateformat" -H no -K -q${auswahl} --holiday-list $(date +%Y))"
+    dataprep
    fi
 
    exdays
