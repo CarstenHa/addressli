@@ -1680,11 +1680,9 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
                                                 # Im oberen Kalenderbereich wird das aktuelle Datum eingefärbt, wenn ...> (Dient zur Sicherheit, wenn folgendes Szenario ist :...:...>
                                                 / [+#] /!s/\([0-9]*\)>/\\e\[30;47m\1\\e\[0m /
                                                 # Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen UND aktuellem Datum eingefärbt.
-                                                / + /s/\(^.*\)<\( *[0-9]*\)>\(.*$\)/\\e\[0;31;1m\1\\e\[0m \\e\[31;47m\2\\e\[0m \\e\[0;31;1m\3\\e\[0m/
+                                                / [+#] /s/\(^.*\)<\( *[0-9]*\)>\(.*$\)/\\e\[0;31;1m\1\\e\[0m \\e\[31;47m\2\\e\[0m \\e\[0;31;1m\3\\e\[0m/
                                                 # Im unteren Kalenderbereich werden die Zeilen mit den (gesetzlichen) Feiertagen OHNE aktuellem Datum eingefärbt.
-                                                / + /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
-                                                # Im unteren Kalenderbereich werden die Zeilen mit besonderen Feiertagen eingefärbt, die nicht gesetzlich sind.
-                                                / # /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31m\1 \2 \3\\e\[0m/
+                                                / [+#] /s/\(^.*\):\( *[0-9]*\):\(.*$\)/\\e\[0;31;1m\1 \2 \3\\e\[0m/
                                                 # Aufräumen, wenn im oberen Kalenderbereich mehrere (gesetzliche) Feiertage horizontal nebeneinander liegen (siehe Punkt 1 und 2).
                                                 s/\([0-9]\):/\1 /g
                                                ')"
@@ -1696,7 +1694,7 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
    blatt="$(echo "$calcontent" | grep -v '(.*)')"
    liste="$(echo "$calcontent" | grep '(.*)')"
 
-   spalte1="$(echo "$liste" | grep -o '^.*)   ')"
+   spalte1="$(echo "$liste" | grep -o '^.*) ')"
    spalte23="$(echo "$liste" | grep -o '(.*)  .*' | sed 's/^(.*)[[:space:]]*//g
                                                               s/\([:> ]\{1\}[[:alpha:]]\{2\}\) \([0-9]\{4\}\)/\1  \2/
                                                              ')"
@@ -1720,9 +1718,6 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
 
   if [ -n "$extholidays" ]; then
 
-   # Doppelte Tage werden rausgefiltert.
-   daylist="$(gcal -u --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '^.*(.*)   ' | sed 's/ (.*)   //' | uniq -d)"
-
    if [ "$highlighting" == "yes" ]; then
     calcontent="$(gcal --date-format="$dateformat" -K -q${auswahl} --holiday-list --"$extholidays" "$ejahr")"
     dataprep
@@ -1732,11 +1727,13 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
     dataprep
    fi
 
+   # Doppelte Tage werden rausgefiltert.
+   daylist="$(gcal -u --date-format="$dateformat" -q${auswahl} --holiday-list --"$extholidays"  $(date +%Y) 2>/dev/null | grep -o '^.* (.*) ' | sed 's/ (.*) $//' | uniq -d)"
    # Abkürzung der zusätzlichen Feiertagsliste.
    extholidaysabbr="$(gcal --date-format="$dateformat" --holiday-list --"$extholidays" | grep -o '(.*)' | uniq | sed 's/[()]//g')"
    # Doppelte Tage mit Inhalt der Variable extholidaysabbr werden gelöscht.
    [ -n "$extholidaysabbr" ] && while read -r oneday; do
-                                  calcontent="$(echo "$calcontent" | sed '\%^'"$oneday"' ('"$extholidaysabbr"')   %d')"
+                                  calcontent="$(echo "$calcontent" | sed '\%^'"$oneday"' ('"$extholidaysabbr"') %d')"
                                 done <<<"$daylist"
 
    exdays
