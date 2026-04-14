@@ -635,7 +635,8 @@ holiupdate() {
     unset dlerror
     echo "Daten der Schulferien werden geprüft und ggf. heruntergeladen ..."
     repourl="https://github.com/openpotato/openholidaysapi.data"
-    wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays/" "${repourl}/raw/develop/LICENSE" && \
+    # Schreibt Lizenz direkt in die Datei (überschreibt evtl. bestehende Lizenzdatei).
+    wget -t 3 --progress=bar -O "${pathofaddress}/holidays/LICENSE" "${repourl}/raw/develop/LICENSE" && \
     licensepath="${pathofaddress}/holidays/LICENSE" || dlerror="yes"
     if [ "$dlerror" == "yes" ]; then
      echo "Fehler beim Herunterladen der Daten. Skript wird abgebrochen."
@@ -643,7 +644,7 @@ holiupdate() {
     else
      echo -e "Quelle : ${repourl}\n         Lizenz siehe ${licensepath}" >"${pathofaddress}/holidays/SOURCE"
     fi
-    wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays" "${repourl}/raw/develop/src/countries.csv"
+    wget --backups=1 -t 3 --progress=bar -P "${pathofaddress}/holidays" "${repourl}/raw/develop/src/countries.csv" || dlerror="yes"
     for country in ${countrylist[@]}; do
      unset hfilename
      [ ! -d "${pathofaddress}/holidays/${country}" ] && mkdir -v "${pathofaddress}/holidays/${country}"
@@ -654,9 +655,9 @@ holiupdate() {
      elif [ "$country" == "de" ]; then
       hfilename="holidays.school.{bb,be,bw,by,hb,he,hh,mv,ni,nw,rp,sh,sl,sn,st,th}.csv"
      fi
-     wget -Nc -t 3 --progress=bar -P "${pathofaddress}/holidays/${country}" "${repourl}/raw/develop/src/${country}/subdivisions.csv"
+     wget --backups=1 -t 3 --progress=bar -P "${pathofaddress}/holidays/${country}" "${repourl}/raw/develop/src/${country}/subdivisions.csv"
      if [ -n "$hfilename" ]; then
-      wgetcomm="wget -Nc -t 3 --progress=bar -P ${pathofaddress}/holidays/${country}"
+      wgetcomm="wget --backups=1 -t 3 --progress=bar -P ${pathofaddress}/holidays/${country}"
       urlpath="${repourl}/raw/develop/src/${country}/holidays/${hfilename}"
       source <(echo "${wgetcomm} ${urlpath} || dlerror=yes")
       echo "Stand  : $(date '+%d.%m.%Y')" >"${pathofaddress}/holidays/${country}/timestamp.log"
