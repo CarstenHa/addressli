@@ -1792,31 +1792,52 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
      gcal -K "$ejahr"
      echo ""
     fi
+
+    # Regionalname
     if [ -n "$fkuerzels" ]; then
-     subname=" ($(grep ';'"${fkuerzelc^^}-${fkuerzels^^}"';' "${pathofaddress}/holidays/${fkuerzelc}/subdivisions.csv" | cut -f6 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/'))"
+     sncol="$(head -n 1 "${pathofaddress}/holidays/${fkuerzelc}/subdivisions.csv" | tr ';' '\n' | grep -n '\<Name\>' | grep -o '^[0-9]\+')"
+     subname=" ($(grep ';'"${fkuerzelc^^}-${fkuerzels^^}"';' "${pathofaddress}/holidays/${fkuerzelc}/subdivisions.csv" | cut -f "$sncol" -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/'))"
     fi
-    echo "Schulferien für $(grep "^${fkuerzelc^^}" "${pathofaddress}/holidays/countries.csv" | cut -f2 -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')${subname}:"
+    # Hauptname
+    namecol="$(head -n 1 "${pathofaddress}/holidays/countries.csv" | tr ';' '\n' | grep -n '\<Name\>' | grep -o '^[0-9]\+')"
+    echo "Schulferien für $(grep "^${fkuerzelc^^}" "${pathofaddress}/holidays/countries.csv" | cut -f "$namecol" -d';' | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')${subname}:"
     printf '\n%-12s %-10s %-30s\n\n' "$(echo "Beginn")" "$(echo "Ende")" "$(echo "Bezeichnung")"
 
     unset allsub
+    unset hgrp
+
+    firstcol="$(head -n 1 "$fpath" | tr ';' '\n')"
+    startcol="$(echo "$firstcol" | grep -n '\<StartDate\>' | grep -o '^[0-9]\+')"
+    endcol="$(echo "$firstcol" | grep -n '\<EndDate\>' | grep -o '^[0-9]\+')"
+    bezcol="$(echo "$firstcol" | tr ';' '\n' | grep -n '\<Name\>' | grep -o '^[0-9]\+')"
+    subcol="$(echo "$firstcol" | tr ';' '\n' | grep -n '\<Subdivisions\>' | grep -o '^[0-9]\+')"
+    grpcol="$(echo "$firstcol" | tr ';' '\n' | grep -n '\<Groups\>' | grep -o '^[0-9]\+')"
+
     while read -r holiline; do
-     hstart="$(cut -f3 -d';' <<<"$holiline")"
-     hend="$(cut -f4 -d';' <<<"$holiline")"
+
+     # Zeiten
+     hstart="$(cut -f "$startcol" -d';' <<<"$holiline" | sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/')"
+     hend="$(cut -f "$endcol" -d';' <<<"$holiline" | sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/')"
      [ -n "$hend" ] && hverb="-" || hverb=""
-     hbez="$(cut -f6 -d';' <<<"$holiline")"
-     hsub="$(cut -f7 -d';' <<<"$holiline")"
+     # Beschreibung
+     hbez="$(cut -f "$bezcol" -d';' <<<"$holiline" | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')"
+     # Subdivisions
+     hsub="$(cut -f "$subcol" -d';' <<<"$holiline")"
      if [ ! "${hsub,,}" == "$fkuerzels" ]; then
       prntsub="$hsub"
       allsub+="${hsub},"
      else
       prntsub=""
      fi
-     hcom="$(cut -f8 -d';' <<<"$holiline" | sed 's/.*DE \([^,]*\),\{,1\}.*/\1/')"
-     [ -n "$hcom" ] && prntcom="$hcom" || prntcom=""
-     printf '%10s %1s %10s %-25s %-16s %-25s\n' "$(sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/' <<<"$hstart")" "$hverb" "$(sed 's/^\(.*\)-\(.*\)-\(.*\)$/\3.\2.\1/' <<<"$hend")" "$(sed 's/.*DE \([^,]*\),\{,1\}.*/\1/' <<<"$hbez")" "$prntsub" "$prntcom" | sed 's/[[:space:]]\{20\}//g'
+     # Groups
+     [ -n "$grpcol" ] && hgrp="$(cut -f "$grpcol" -d';' <<<"$holiline")"
+
+     # Ausgabe
+     printf '%10s %1s %10s %-26s\t%-20s\t%-20s\n' "$hstart" "$hverb" "$hend" "$hbez" "$prntsub" "$hgrp" | sed 's/[[:space:]]\{20\}//g'
+
     done <<<"$holilist"
 
-    # Hinweise zu Abkürzungen
+    # Hinweise zu Abkürzungen (Subdivisions)
     if [ -n "$allsub" ]; then
      echo -e "\nHinweise:"
      abbrlist="$(echo "$allsub" | tr ',' '\n' | sort | uniq | sed '/^$/d')"
