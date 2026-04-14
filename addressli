@@ -664,6 +664,8 @@ holiupdate() {
      fi
     done
     [ "$dlerror" == "yes" ] && echo "Es gab Probleme beim Herunterladen der Daten."
+    # Bei Dateien mit DOS Zeilenvorschüben (CRLF) in UNIX-Format (LF) ändern.
+    find "${pathofaddress}/holidays/" -type f -iname '*.csv' -exec grep -Il $'\r' {} + | xargs sed -i 's/\r$//'
 }
 # ********** Funktionen - Ende  **********
 
