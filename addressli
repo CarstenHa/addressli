@@ -1766,10 +1766,10 @@ if [ "$optccal" == "yes" -o "$optdcal" == "yes" -o "$optfcal" == "yes" ]; then
  if [ "$optdcal" == "yes" ]; then
 
   if [ "$calprint" == "yes" ]; then
-   gcal -u -f "$datefile" "$ejahr"
+   gcal -u -f "$datefile" "$ejahr" | sed 's/\([0-9]\{1,2\} [[:alpha:]]\{2\} \)\([0-9]\{4\}:\)/\1 \2/'
   else
    calprint="yes"
-   gcal -K -f "$datefile" "$ejahr"
+   gcal -K -f "$datefile" "$ejahr" | sed 's/\([0-9]\{1,2\} [[:alpha:]]\{2\} \)\([0-9]\{4\}:\)/\1 \2/'
   fi
   echo ""
 
